@@ -97,19 +97,20 @@ DATABASES = {
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
+#
+# Deliberately just two, plainly-stated rules instead of Django's default
+# set (similarity-to-username, common-password list, not-entirely-numeric)
+# — those produced vague messaging like "can't be too similar to your other
+# personal information." Teachers signing up should see exactly what's
+# required.
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 8},
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        'NAME': 'workspaces.validators.AlphanumericPasswordValidator',
     },
 ]
 
