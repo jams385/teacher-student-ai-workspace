@@ -8,6 +8,7 @@
 <h1>{{ workspace.name }}</h1>
 <p>Mode: {{ workspace.get_mode_display }}</p>
 <p>Join code: <code>{{ workspace.join_code }}</code></p>
+<p><a href="{% url 'workspace_dashboard' pk=workspace.pk %}">View dashboard &rarr;</a></p>
 
 <h2>Course materials</h2>
 {% if materials %}

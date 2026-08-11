@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}{{ workspace.name }} — Dashboard{% endblock %}
+
+{% block content %}
+<p><a href="{% url 'workspace_detail' pk=workspace.pk %}">&larr; {{ workspace.name }}</a></p>
+
+<h1>{{ workspace.name }} — Dashboard</h1>
+
+<h2>Students</h2>
+{% if student_sessions %}
+<table>
+    <thead>
+        <tr>
+            <th>Student</th>
+            <th>Messages sent</th>
+            <th>Joined</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for session in student_sessions %}
+        <tr>
+            <td>{{ session.display_name }}</td>
+            <td>{{ session.message_count }}</td>
+            <td>{{ session.joined_at|date:"M j, Y g:i A" }}</td>
+            <td><a href="{% url 'session_transcript' pk=workspace.pk session_pk=session.pk %}">View transcript</a></td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No students have joined this workspace yet.</p>
+{% endif %}
+
+<h2>Commonly asked words</h2>
+{% if keywords %}
+<ol>
+    {% for word, count in keywords %}
+    <li>{{ word }} ({{ count }})</li>
+    {% endfor %}
+</ol>
+{% else %}
+<p>Not enough student messages yet to show common words.</p>
+{% endif %}
+{% endblock %}

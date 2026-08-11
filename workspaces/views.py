@@ -4,6 +4,7 @@ from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib import messages
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -12,7 +13,7 @@ from django.views.decorators.http import require_POST
 from . import ai_client, storage
 from .forms import MaterialUploadForm, StudentJoinForm, WorkspaceForm
 from .models import Material, Message, StudentSession, Workspace
-from .utils import extract_pdf_text, generate_unique_join_code
+from .utils import extract_pdf_text, generate_unique_join_code, keyword_frequency
 
 
 def teacher_signup(request):
@@ -104,6 +105,43 @@ def workspace_detail(request, pk):
         'workspace': workspace,
         'materials': workspace.materials.order_by('-uploaded_at'),
         'form': form,
+    })
+
+
+@login_required
+def workspace_dashboard(request, pk):
+    """Students in this workspace with message counts, plus a simple
+    workspace-wide keyword-frequency view of what they're asking about."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
+
+    student_sessions = (
+        workspace.student_sessions
+        .annotate(message_count=Count('messages', filter=Q(messages__role=Message.Role.STUDENT)))
+        .order_by('-joined_at')
+    )
+
+    student_message_texts = Message.objects.filter(
+        workspace=workspace, role=Message.Role.STUDENT
+    ).values_list('content', flat=True)
+
+    return render(request, 'workspaces/workspace_dashboard.html', {
+        'workspace': workspace,
+        'student_sessions': student_sessions,
+        'keywords': keyword_frequency(student_message_texts),
+    })
+
+
+@login_required
+def session_transcript(request, pk, session_pk):
+    """Read-only transcript for one student's session — reuses the same chat
+    bubble partial the live chat view uses, just with no send form."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
+    student_session = get_object_or_404(StudentSession, pk=session_pk, workspace=workspace)
+
+    return render(request, 'workspaces/session_transcript.html', {
+        'workspace': workspace,
+        'student_session': student_session,
+        'chat_messages': student_session.messages.all(),
     })
 
 
