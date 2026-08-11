@@ -13,7 +13,7 @@ A controlled AI environment where students interact with an AI learning assistan
 - **Backend + Frontend:** Python, Django, HTML templates + HTMX (no separate JS framework, no React/Next.js)
 - **Database:** Postgres via Supabase
 - **File storage:** Supabase Storage (**not** local Django storage — the host's filesystem is ephemeral and files will be lost on redeploy)
-- **AI layer:** Start with Gemini (Google AI Studio) or OpenRouter free tier for development; Claude API (Anthropic Python SDK) for anything touching real student data
+- **AI layer:** Currently Gemini (`gemini-flash-latest` via `google-genai`) — the whole point of `ai_client.py` isolating the provider is that swapping to Claude later (Anthropic Python SDK, e.g. once real student data is involved) only touches that one file. Model pinned to the `-latest` alias, not a dated version — Google retires specific model IDs (hit this once already: `gemini-2.5-flash` 404'd as "no longer available to new users" mid-build).
 - **Hosting:** Render (not Vercel — Vercel's serverless Python functions have a 10s/60s execution timeout that risks killing slower LLM responses; Render runs Django as a normal persistent server)
 
 ---
@@ -64,13 +64,15 @@ The keyword-flagging feature ("ignore previous instructions", "pretend you're no
 
 ## MVP feature checklist
 
-- [ ] Teacher auth (Django's built-in auth) + create/manage workspaces
-- [ ] Mode selection per workspace: Socratic / Homework (hardcoded prompts, no custom editor in MVP)
-- [ ] Upload course texts/PDFs → extract text (`pypdf`) → store in Supabase Storage + `Material` model
-- [ ] Student joins workspace via join code (lightweight session, no full account)
-- [ ] Student chat interface (HTMX-driven, no full page reloads)
-- [ ] Teacher dashboard: open student transcripts, message counts, commonly asked questions (simple keyword frequency for MVP — skip real clustering)
-- [ ] Keyword-based flagging of jailbreak attempts, surfaced to teacher dashboard (secondary to the architectural enforcement above)
+- [x] Teacher auth (Django's built-in auth) + create/manage workspaces
+- [x] Mode selection per workspace: Socratic / Homework (hardcoded prompts, no custom editor in MVP)
+- [x] Upload course texts/PDFs → extract text (`pypdf`) → store in Supabase Storage + `Material` model
+- [x] Student joins workspace via join code (lightweight session, no full account)
+- [x] Student chat interface (HTMX-driven, no full page reloads)
+- [x] Teacher dashboard: open student transcripts, message counts, commonly asked questions (simple keyword frequency for MVP — skip real clustering)
+- [ ] Keyword-based flagging of jailbreak attempts, surfaced to teacher dashboard (secondary to the architectural enforcement above) — **next up**
+
+Supabase is a real, live project now (not just planned) — Postgres DB and a private `course-materials` Storage bucket are both wired up and verified end to end. Local dev reads all of this from `.env` (gitignored); nothing here is hardcoded.
 
 ## Explicitly out of scope for MVP (don't build unless asked)
 
