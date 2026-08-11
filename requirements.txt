@@ -1,0 +1,11 @@
+Django>=5.0,<6.0
+django-htmx
+psycopg2-binary
+python-decouple
+dj-database-url
+anthropic
+google-genai
+pypdf
+supabase
+gunicorn
+whitenoise
