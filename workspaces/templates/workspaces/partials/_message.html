@@ -1,0 +1,6 @@
+<div class="chat-message chat-message-{{ message.role }}">
+    <div class="chat-message-author">
+        {% if message.role == 'student' %}{{ message.student_session.display_name }}{% else %}AI{% endif %}
+    </div>
+    <div class="chat-message-content">{{ message.content|linebreaksbr }}</div>
+</div>

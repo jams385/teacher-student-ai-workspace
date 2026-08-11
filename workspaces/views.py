@@ -2,10 +2,14 @@ from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib import messages
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
+from django.views.decorators.http import require_POST
 
+from . import ai_client
 from .forms import StudentJoinForm, WorkspaceForm
-from .models import StudentSession
+from .models import Message, StudentSession
 from .utils import generate_unique_join_code
 
 
@@ -75,16 +79,25 @@ def student_join(request):
     return render(request, 'workspaces/student_join.html', {'form': form})
 
 
-def student_chat(request):
-    student_session = None
-    if request.session.session_key:
-        student_session = (
-            StudentSession.objects
-            .filter(session_id=request.session.session_key)
-            .select_related('workspace')
-            .first()
-        )
+def _get_student_session(request):
+    """Look up "who is this browser" from the session cookie (see student_join).
 
+    Returns None if there's no session cookie or it doesn't match a
+    StudentSession — e.g. the cookie expired, or this is a fresh browser
+    that never joined.
+    """
+    if not request.session.session_key:
+        return None
+    return (
+        StudentSession.objects
+        .filter(session_id=request.session.session_key)
+        .select_related('workspace')
+        .first()
+    )
+
+
+def student_chat(request):
+    student_session = _get_student_session(request)
     if student_session is None:
         messages.info(request, 'Enter your join code to start chatting.')
         return redirect('student_join')
@@ -92,4 +105,74 @@ def student_chat(request):
     return render(request, 'workspaces/chat.html', {
         'student_session': student_session,
         'workspace': student_session.workspace,
+        'chat_messages': student_session.messages.all(),
+    })
+
+
+@require_POST
+def send_message(request):
+    """HTMX endpoint: student sends a message, gets the AI's reply appended.
+
+    Calls ai_client.get_ai_response exactly per the architecture rule in
+    CLAUDE.md — mode comes from the workspace record, never from the
+    request. Returns just the new chat bubbles (a partial), not a full page,
+    for HTMX to swap into #message-list.
+    """
+    student_session = _get_student_session(request)
+    if student_session is None:
+        # Session cookie expired mid-chat. HX-Redirect tells htmx to do a
+        # full page navigation instead of trying to swap partial content in.
+        response = HttpResponse(status=204)
+        response['HX-Redirect'] = reverse('student_join')
+        return response
+
+    text = request.POST.get('message', '').strip()
+    if not text:
+        return HttpResponse('')  # nothing to send — no-op, no swap content
+
+    workspace = student_session.workspace
+
+    # Prior turns, in Gemini's role naming — built *before* saving the new
+    # student message below, since get_ai_response takes the new message
+    # separately (see ai_client.py).
+    conversation_history = [
+        {
+            'role': 'user' if m.role == Message.Role.STUDENT else 'model',
+            'parts': [{'text': m.content}],
+        }
+        for m in student_session.messages.all()
+    ]
+
+    course_material_context = '\n\n'.join(
+        material.extracted_text
+        for material in workspace.materials.all()
+        if material.extracted_text
+    )
+
+    student_message = Message.objects.create(
+        workspace=workspace,
+        student_session=student_session,
+        role=Message.Role.STUDENT,
+        content=text,
+    )
+
+    try:
+        reply_text = ai_client.get_ai_response(
+            workspace.mode, conversation_history, text, course_material_context
+        )
+    except ai_client.AIClientError:
+        return render(request, 'workspaces/partials/_messages.html', {
+            'chat_messages': [student_message],
+            'error': True,
+        })
+
+    ai_message = Message.objects.create(
+        workspace=workspace,
+        student_session=student_session,
+        role=Message.Role.AI,
+        content=reply_text,
+    )
+
+    return render(request, 'workspaces/partials/_messages.html', {
+        'chat_messages': [student_message, ai_message],
     })

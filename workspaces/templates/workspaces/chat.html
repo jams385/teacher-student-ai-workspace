@@ -8,6 +8,17 @@
 <p>Chatting as <strong>{{ student_session.display_name }}</strong></p>
 
 <div id="message-list">
-    <p><em>No messages yet. Sending a message and getting a reply is coming in the next step.</em></p>
+    {% include 'workspaces/partials/_messages.html' %}
 </div>
+
+<form
+    hx-post="{% url 'send_message' %}"
+    hx-target="#message-list"
+    hx-swap="beforeend"
+    hx-on="htmx:afterRequest: this.reset()"
+>
+    {% csrf_token %}
+    <input type="text" name="message" placeholder="Ask a question..." required autocomplete="off">
+    <button type="submit">Send</button>
+</form>
 {% endblock %}
