@@ -22,7 +22,11 @@ from google import genai
 from google.genai import types
 from decouple import config
 
-MODEL = "gemini-2.5-flash"  # confirm current availability/pricing at ai.google.dev before production use
+MODEL = "gemini-flash-latest"  # a rolling alias for Google's current recommended Flash model, not a pinned
+# version — this dodges the exact failure we hit with the pinned "gemini-2.5-flash" (still listed by
+# client.models.list(), but rejected at generateContent time as retired for new API keys/projects).
+# Tradeoff: the underlying model can change without notice, which could shift response character.
+# Confirm current availability/pricing at ai.google.dev before production use.
 
 MODE_PROMPTS = {
     "socratic": "You are in Socratic Mode for a classroom assistant. Never give direct answers. Only respond with guiding questions that help the student reach the answer themselves.",
