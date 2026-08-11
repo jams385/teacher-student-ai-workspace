@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Your workspaces{% endblock %}
+
+{% block content %}
+<h1>Your workspaces</h1>
+<p><a href="{% url 'workspace_create' %}">+ New workspace</a></p>
+
+{% if workspaces %}
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Mode</th>
+            <th>Join code</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for workspace in workspaces %}
+        <tr>
+            <td>{{ workspace.name }}</td>
+            <td>{{ workspace.get_mode_display }}</td>
+            <td><code>{{ workspace.join_code }}</code></td>
+            <td>{{ workspace.created_at|date:"M j, Y" }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>You haven't created any workspaces yet.</p>
+{% endif %}
+{% endblock %}

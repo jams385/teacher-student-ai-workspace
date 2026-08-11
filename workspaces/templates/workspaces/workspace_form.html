@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}New workspace{% endblock %}
+
+{% block content %}
+<h1>New workspace</h1>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Create workspace</button>
+</form>
+{% endblock %}
