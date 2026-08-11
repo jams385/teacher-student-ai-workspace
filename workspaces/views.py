@@ -1,16 +1,18 @@
+from pypdf.errors import PyPdfError
+
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib import messages
 from django.http import HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from . import ai_client
-from .forms import StudentJoinForm, WorkspaceForm
-from .models import Message, StudentSession
-from .utils import generate_unique_join_code
+from . import ai_client, storage
+from .forms import MaterialUploadForm, StudentJoinForm, WorkspaceForm
+from .models import Material, Message, StudentSession, Workspace
+from .utils import extract_pdf_text, generate_unique_join_code
 
 
 def teacher_signup(request):
@@ -51,6 +53,58 @@ def workspace_create(request):
     else:
         form = WorkspaceForm()
     return render(request, 'workspaces/workspace_form.html', {'form': form})
+
+
+@login_required
+def workspace_detail(request, pk):
+    """Workspace info + course material upload. Also where a teacher will
+    eventually review transcripts — dashboard, not this step."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
+
+    if request.method == 'POST':
+        form = MaterialUploadForm(request.POST, request.FILES)
+        if form.is_valid():
+            uploaded_file = form.cleaned_data['file']
+            content = uploaded_file.read()  # read once — reused for both extraction and upload below
+
+            extraction_failed = False
+            try:
+                extracted_text = extract_pdf_text(content)
+            except PyPdfError:
+                extracted_text = ''
+                extraction_failed = True
+
+            try:
+                storage_path = storage.upload_material(
+                    workspace.id,
+                    uploaded_file.name,
+                    content,
+                    uploaded_file.content_type or 'application/pdf',
+                )
+            except storage.StorageError as e:
+                # Extraction outcome doesn't matter — nothing was saved.
+                messages.error(request, f"Couldn't upload \"{uploaded_file.name}\": {e}")
+                return redirect('workspace_detail', pk=workspace.pk)
+
+            Material.objects.create(workspace=workspace, file=storage_path, extracted_text=extracted_text)
+
+            if extraction_failed:
+                messages.warning(
+                    request,
+                    f'"{uploaded_file.name}" was uploaded, but its text couldn\'t be extracted '
+                    '(it may be scanned or corrupted) — it won\'t be usable as AI context yet.',
+                )
+            else:
+                messages.success(request, f'Uploaded "{uploaded_file.name}".')
+            return redirect('workspace_detail', pk=workspace.pk)
+    else:
+        form = MaterialUploadForm()
+
+    return render(request, 'workspaces/workspace_detail.html', {
+        'workspace': workspace,
+        'materials': workspace.materials.order_by('-uploaded_at'),
+        'form': form,
+    })
 
 
 def student_join(request):

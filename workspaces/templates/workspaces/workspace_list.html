@@ -19,7 +19,7 @@
     <tbody>
     {% for workspace in workspaces %}
         <tr>
-            <td>{{ workspace.name }}</td>
+            <td><a href="{% url 'workspace_detail' pk=workspace.pk %}">{{ workspace.name }}</a></td>
             <td>{{ workspace.get_mode_display }}</td>
             <td><code>{{ workspace.join_code }}</code></td>
             <td>{{ workspace.created_at|date:"M j, Y" }}</td>

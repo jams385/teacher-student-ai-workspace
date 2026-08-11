@@ -31,3 +31,19 @@ class StudentJoinForm(forms.Form):
                 "We couldn't find a workspace with that join code. Double-check it and try again."
             )
         return code
+
+
+class MaterialUploadForm(forms.Form):
+    MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20MB — the whole file is read into memory for text extraction + upload
+
+    file = forms.FileField(label='Course material (PDF)')
+
+    def clean_file(self):
+        uploaded_file = self.cleaned_data['file']
+        name = uploaded_file.name.lower()
+        content_type = getattr(uploaded_file, 'content_type', '') or ''
+        if not name.endswith('.pdf') and content_type != 'application/pdf':
+            raise forms.ValidationError('Please upload a PDF file.')
+        if uploaded_file.size > self.MAX_UPLOAD_BYTES:
+            raise forms.ValidationError('That file is too large — please keep uploads under 20MB.')
+        return uploaded_file
