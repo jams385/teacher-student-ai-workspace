@@ -43,4 +43,28 @@
 {% else %}
 <p>Not enough student messages yet to show common words.</p>
 {% endif %}
+
+<h2>Flagged messages</h2>
+<p><em>Messages auto-flagged for phrasing that resembles a jailbreak attempt (e.g. "ignore your instructions"). This is a detection signal for review, not proof the AI complied — it structurally can't, regardless of phrasing.</em></p>
+{% if flags %}
+<table>
+    <thead>
+        <tr>
+            <th>Student</th>
+            <th>Matched phrase</th>
+            <th>Message</th>
+            <th>Flagged</th>
+            <th></th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for flag in flags %}
+        {% include 'workspaces/partials/_flag_row.html' %}
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No flagged messages.</p>
+{% endif %}
 {% endblock %}

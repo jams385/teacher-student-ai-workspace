@@ -10,9 +10,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from . import ai_client, storage
+from . import ai_client, moderation, storage
 from .forms import MaterialUploadForm, StudentJoinForm, WorkspaceForm
-from .models import Material, Message, StudentSession, Workspace
+from .models import Flag, Material, Message, StudentSession, Workspace
 from .utils import extract_pdf_text, generate_unique_join_code, keyword_frequency
 
 
@@ -110,8 +110,11 @@ def workspace_detail(request, pk):
 
 @login_required
 def workspace_dashboard(request, pk):
-    """Students in this workspace with message counts, plus a simple
-    workspace-wide keyword-frequency view of what they're asking about."""
+    """Students in this workspace with message counts, a simple
+    workspace-wide keyword-frequency view of what they're asking about, and
+    flagged messages (possible jailbreak attempts, per moderation.py) for
+    review. Per CLAUDE.md, this stays aggregate + flagged-only — not a raw
+    firehose of every message."""
     workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
 
     student_sessions = (
@@ -124,11 +127,35 @@ def workspace_dashboard(request, pk):
         workspace=workspace, role=Message.Role.STUDENT
     ).values_list('content', flat=True)
 
+    flags = (
+        Flag.objects.filter(message__workspace=workspace)
+        .select_related('message', 'message__student_session')
+        .order_by('reviewed', '-created_at')
+    )
+
     return render(request, 'workspaces/workspace_dashboard.html', {
         'workspace': workspace,
         'student_sessions': student_sessions,
         'keywords': keyword_frequency(student_message_texts),
+        'flags': flags,
     })
+
+
+@login_required
+@require_POST
+def flag_mark_reviewed(request, pk, flag_pk):
+    """HTMX endpoint: teacher marks a flagged message as reviewed. Scoped to
+    the teacher's own workspace via the pk in the URL, same as every other
+    dashboard view. Returns just the updated row (partial) for HTMX to swap."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
+    flag = get_object_or_404(
+        Flag.objects.select_related('message', 'message__student_session'),
+        pk=flag_pk,
+        message__workspace=workspace,
+    )
+    flag.reviewed = True
+    flag.save(update_fields=['reviewed'])
+    return render(request, 'workspaces/partials/_flag_row.html', {'workspace': workspace, 'flag': flag})
 
 
 @login_required
@@ -141,7 +168,10 @@ def session_transcript(request, pk, session_pk):
     return render(request, 'workspaces/session_transcript.html', {
         'workspace': workspace,
         'student_session': student_session,
-        'chat_messages': student_session.messages.all(),
+        'chat_messages': student_session.messages.prefetch_related('flags'),
+        # Only the teacher-facing transcript shows flag badges — students
+        # never see that a message was flagged (see _message.html).
+        'show_flags': True,
     })
 
 
@@ -247,6 +277,11 @@ def send_message(request):
         role=Message.Role.STUDENT,
         content=text,
     )
+
+    # Detection-only: never influences the AI call below, only surfaces the
+    # message to the teacher dashboard for review. See moderation.py.
+    for matched_text in moderation.find_jailbreak_attempts(text):
+        Flag.objects.create(message=student_message, matched_text=matched_text[:255])
 
     try:
         reply_text = ai_client.get_ai_response(

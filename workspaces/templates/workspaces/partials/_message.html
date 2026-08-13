@@ -3,4 +3,10 @@
         {% if message.role == 'student' %}{{ message.student_session.display_name }}{% else %}AI{% endif %}
     </div>
     <div class="chat-message-content">{{ message.content|linebreaksbr }}</div>
+    {% if show_flags and message.flags.all %}
+    <div class="chat-message-flags">
+        &#9888; Flagged:
+        {% for flag in message.flags.all %}"{{ flag.matched_text }}"{% if not forloop.last %}, {% endif %}{% endfor %}
+    </div>
+    {% endif %}
 </div>
