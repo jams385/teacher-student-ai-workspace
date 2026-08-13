@@ -70,7 +70,9 @@ The keyword-flagging feature ("ignore previous instructions", "pretend you're no
 - [x] Student joins workspace via join code (lightweight session, no full account)
 - [x] Student chat interface (HTMX-driven, no full page reloads)
 - [x] Teacher dashboard: open student transcripts, message counts, commonly asked questions (simple keyword frequency for MVP — skip real clustering)
-- [ ] Keyword-based flagging of jailbreak attempts, surfaced to teacher dashboard (secondary to the architectural enforcement above) — **next up**
+- [x] Keyword-based flagging of jailbreak attempts, surfaced to teacher dashboard (secondary to the architectural enforcement above)
+
+All MVP checklist items are done. `docs/` has draft consent/data-notice copy for teacher signup, workspace creation, and student join — not wired into the app yet, just planning content for whenever that's picked up.
 
 Supabase is a real, live project now (not just planned) — Postgres DB and a private `course-materials` Storage bucket are both wired up and verified end to end. Local dev reads all of this from `.env` (gitignored); nothing here is hardcoded.
 
