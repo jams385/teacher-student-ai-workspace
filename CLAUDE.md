@@ -49,8 +49,9 @@ The keyword-flagging feature ("ignore previous instructions", "pretend you're no
 
 ## Data model (starting point)
 
-- `Workspace` — teacher (FK to User), name, mode (choices: `socratic`, `homework`, `lecture`), join_code, created_at, lecture_outline (Lecture Mode only — a static, whole-deck outline generated on teacher demand), lecture_outline_generated_at
-- `Material` — workspace (FK), file (Supabase Storage path), extracted_text, uploaded_at — PDF or PowerPoint (`.pptx`), extraction via `pypdf`/`python-pptx` respectively; deletable by the teacher (removes both the DB row and the Supabase Storage object)
+- `Workspace` — teacher (FK to User), name, mode (choices: `socratic`, `homework`, `lecture`), join_code, created_at, lecture_outline (Lecture Mode only — a static, whole-deck outline generated on teacher demand), lecture_outline_generated_at, live_material (FK to Material, Lecture Mode Live Slideshow — which material is currently being presented, null when nothing is live; `on_delete=SET_NULL`), live_slide_index (which slide the teacher is currently on)
+- `Material` — workspace (FK), file (Supabase Storage path), extracted_text, uploaded_at — PDF or PowerPoint (`.pptx`), extraction via `pypdf`/`python-pptx` respectively; deletable by the teacher (removes both the DB row and the Supabase Storage object, plus any Slide rows/images)
+- `Slide` — material (FK), index (0-based page number), image (Supabase Storage path to a rasterized PNG) — PDF-only (`utils.rasterize_pdf`, via PyMuPDF); a Material with no Slide rows just isn't eligible for the Live Slideshow
 - `StudentSession` — workspace (FK), display_name, session_id, joined_at
 - `Message` — workspace (FK), student_session (FK), role (`student`/`ai`), content, created_at
 - `Flag` — message (FK), reason (e.g. `keyword_match`), matched_text, created_at, reviewed (bool)
@@ -70,6 +71,7 @@ The keyword-flagging feature ("ignore previous instructions", "pretend you're no
 - [x] Mode selection per workspace: Socratic / Homework / Lecture (hardcoded prompts, no custom editor in MVP)
 - [x] Upload course texts/PDFs/PPTX → extract text (`pypdf` / `python-pptx`) → store in Supabase Storage + `Material` model; teacher can delete a material (DB row + Storage object)
 - [x] Lecture Mode: teacher-triggered whole-deck outline generation (`ai_client.summarize_lecture_material`), shown to students alongside chat — static, no live slide-by-slide sync
+- [x] Lecture Mode: Live Slideshow — teacher presents a PDF's rasterized slides live (HTMX-polled), students view in-browser (no download) and may navigate backward but never ahead of the teacher's current slide, enforced server-side on every image request (see `views.slide_image`). PDF-only — see `docs/live-slideshow-risks.md`
 - [x] Student joins workspace via join code (lightweight session, no full account)
 - [x] Student chat interface (HTMX-driven, no full page reloads)
 - [x] Teacher dashboard: open student transcripts, message counts, commonly asked questions (simple keyword frequency for MVP — skip real clustering)
@@ -95,6 +97,7 @@ Supabase is a real, live project now (not just planned) — Postgres DB and a pr
 - Supabase free tier projects pause after 7 days of inactivity — fine for dev, worth a heads-up before a real pilot
 - Render free tier cold-starts after 15 min idle — first request after a quiet period will be slow
 - Students may be minors — no feature should log or expose more than necessary for the teacher's legitimate monitoring purpose; keep dashboard visibility to aggregate + flagged messages rather than a full raw firehose by default
+- See `docs/live-slideshow-risks.md` for open risks/tradeoffs specific to the Live Slideshow feature (cost, PyMuPDF's AGPL license, synchronous large-deck upload limits, etc.) — worth a periodic check
 
 ---
 

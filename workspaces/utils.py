@@ -3,6 +3,7 @@ import random
 import re
 from collections import Counter
 
+import pymupdf as fitz  # `import fitz` is a deprecated alias as of pymupdf 1.28
 from pptx import Presentation
 from pypdf import PdfReader
 
@@ -81,6 +82,24 @@ def extract_pptx_text(content: bytes) -> str:
         ]
         slide_texts.append('\n'.join(shape_texts))
     return '\n\n'.join(slide_texts)
+
+
+def rasterize_pdf(content: bytes, zoom: float = 2.0) -> list[bytes]:
+    """Render each page of PDF bytes to a PNG, in page order — used by the
+    Live Slideshow feature (Lecture Mode only; PDF-only, see Slide model).
+
+    zoom=2.0 is roughly 144 DPI: legible for on-screen presentation without
+    bloating storage. Returns one PNG bytes object per page.
+
+    Raises on any failure to open/render — callers should treat this as
+    recoverable (same as extract_pdf_text/extract_pptx_text): still store
+    the Material, just without Slide rows (no "Present" option for it).
+    PyMuPDF doesn't expose one single clean exception type the way pypdf's
+    PyPdfError does, so callers should catch broadly here.
+    """
+    doc = fitz.open(stream=content, filetype='pdf')
+    matrix = fitz.Matrix(zoom, zoom)
+    return [page.get_pixmap(matrix=matrix).tobytes('png') for page in doc]
 
 
 def keyword_frequency(text_items, top_n=20):

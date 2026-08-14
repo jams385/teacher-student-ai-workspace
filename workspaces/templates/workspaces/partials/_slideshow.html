@@ -1,0 +1,15 @@
+<span
+    id="live-status"
+    hx-get="{% url 'live_status' %}"
+    hx-trigger="every 4s"
+    hx-swap="outerHTML"
+    data-live-index="{% if workspace.live_slide_index is not None %}{{ workspace.live_slide_index }}{% endif %}"
+    data-slide-count="{{ slide_count }}"
+    data-material-pk="{% if workspace.live_material_id %}{{ workspace.live_material_id }}{% endif %}"
+>
+    {% if workspace.live_material_id %}
+        Live: slide {{ workspace.live_slide_index|add:1 }} of {{ slide_count }}
+    {% else %}
+        Your teacher hasn't started a presentation yet.
+    {% endif %}
+</span>

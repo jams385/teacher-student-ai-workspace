@@ -81,6 +81,8 @@ def delete_material(path: str) -> None:
     Args:
         path: The object's path within the bucket, as stored in `Material.file`
             (i.e. exactly what upload_material returned when the file was uploaded).
+            Path-generic despite the name — also reused to delete Slide image
+            objects (see delete's call site in views.material_delete).
 
     Raises:
         StorageError: if the delete request fails.
@@ -89,3 +91,38 @@ def delete_material(path: str) -> None:
         _get_client().storage.from_(BUCKET_NAME).remove([path])
     except (SupabaseException, StorageException) as e:
         raise StorageError(f'Supabase Storage delete failed: {e}') from e
+
+
+def upload_slide_image(workspace_id: int, material_id: int, index: int, content: bytes) -> str:
+    """Upload one rasterized slide PNG (see utils.rasterize_pdf). Returns its object path.
+
+    Raises:
+        StorageError: if the upload request fails.
+    """
+    path = f'workspace_{workspace_id}/material_{material_id}/slide_{index:04d}.png'
+    try:
+        _get_client().storage.from_(BUCKET_NAME).upload(
+            path,
+            content,
+            file_options={'content-type': 'image/png'},
+        )
+    except (SupabaseException, StorageException) as e:
+        raise StorageError(f'Supabase Storage upload failed: {e}') from e
+    return path
+
+
+def download_file(path: str) -> bytes:
+    """Fetch raw bytes for any object path in the bucket (course material or
+    slide image). Server-side only — never hand a signed URL to the client;
+    the Live Slideshow feature proxies image bytes through Django precisely
+    so the "student can't see ahead of the teacher" bound (see
+    views.slide_image) is re-checked on every single request, not just once
+    at URL-issue time the way a signed URL would allow.
+
+    Raises:
+        StorageError: if the download request fails.
+    """
+    try:
+        return _get_client().storage.from_(BUCKET_NAME).download(path)
+    except (SupabaseException, StorageException) as e:
+        raise StorageError(f'Supabase Storage download failed: {e}') from e

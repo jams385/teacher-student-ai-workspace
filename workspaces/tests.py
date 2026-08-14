@@ -1,6 +1,7 @@
 import io
 from unittest.mock import MagicMock, patch
 
+import pymupdf as fitz  # `import fitz` is a deprecated alias as of pymupdf 1.28
 from pptx import Presentation
 
 from django.contrib.auth import get_user_model
@@ -10,8 +11,8 @@ from django.urls import reverse
 
 from . import ai_client, moderation, storage
 from .forms import MaterialUploadForm
-from .models import Flag, Material, Message, StudentSession, Workspace
-from .utils import extract_pptx_text
+from .models import Flag, Material, Message, Slide, StudentSession, Workspace
+from .utils import extract_pptx_text, rasterize_pdf
 
 
 def _make_pptx_bytes(slide_texts):
@@ -24,6 +25,17 @@ def _make_pptx_bytes(slide_texts):
         box.text_frame.text = text
     buffer = io.BytesIO()
     presentation.save(buffer)
+    return buffer.getvalue()
+
+
+def _make_pdf_bytes(num_pages):
+    """Build a minimal in-memory PDF with the given number of blank pages."""
+    doc = fitz.open()
+    for _ in range(num_pages):
+        doc.new_page(width=200, height=200)
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    doc.close()
     return buffer.getvalue()
 
 
@@ -297,3 +309,269 @@ class MaterialDeleteTests(TestCase):
         response = self.client.post(reverse('material_delete', args=[other_workspace.pk, self.material.pk]))
         self.assertEqual(response.status_code, 404)
         self.assertTrue(Material.objects.filter(pk=self.material.pk).exists())
+
+
+class MaterialDeleteSlidesTests(TestCase):
+    def setUp(self):
+        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='DELSLD',
+        )
+        self.material = Material.objects.create(workspace=self.workspace, file='workspace_1/deck.pdf', extracted_text='text')
+        for i in range(2):
+            Slide.objects.create(material=self.material, index=i, image=f'workspace_1/material_1/slide_{i:04d}.png')
+        self.client.login(username='teacher', password='pw')
+
+    @patch('workspaces.views.storage.delete_material')
+    def test_deletes_slide_storage_objects_and_rows(self, mock_delete):
+        self.client.post(reverse('material_delete', args=[self.workspace.pk, self.material.pk]))
+        deleted_paths = {call.args[0] for call in mock_delete.call_args_list}
+        self.assertEqual(deleted_paths, {
+            'workspace_1/deck.pdf',
+            'workspace_1/material_1/slide_0000.png',
+            'workspace_1/material_1/slide_0001.png',
+        })
+        self.assertEqual(Slide.objects.filter(material_id=self.material.pk).count(), 0)
+
+
+class RasterizePdfTests(TestCase):
+    def test_extracts_one_png_per_page(self):
+        content = _make_pdf_bytes(3)
+        images = rasterize_pdf(content)
+        self.assertEqual(len(images), 3)
+        for image in images:
+            self.assertTrue(image.startswith(b'\x89PNG'))
+
+    def test_invalid_pdf_raises(self):
+        with self.assertRaises(Exception):
+            rasterize_pdf(b'not a pdf')
+
+
+class MaterialUploadSlidesTests(TestCase):
+    def setUp(self):
+        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='UPLSLD',
+        )
+        self.client.login(username='teacher', password='pw')
+
+    @patch(
+        'workspaces.views.storage.upload_slide_image',
+        side_effect=lambda ws, mat, idx, content: f'workspace_{ws}/material_{mat}/slide_{idx:04d}.png',
+    )
+    @patch('workspaces.views.storage.upload_material', return_value='workspace_1/deck.pdf')
+    def test_pdf_upload_creates_slide_rows(self, mock_upload_material, mock_upload_slide_image):
+        content = _make_pdf_bytes(3)
+        upload = SimpleUploadedFile('deck.pdf', content, content_type='application/pdf')
+        response = self.client.post(reverse('workspace_detail', args=[self.workspace.pk]), {'file': upload})
+        self.assertEqual(response.status_code, 302)
+        material = Material.objects.get(workspace=self.workspace)
+        self.assertEqual(material.slides.count(), 3)
+        self.assertEqual(list(material.slides.order_by('index').values_list('index', flat=True)), [0, 1, 2])
+
+    @patch('workspaces.views.rasterize_pdf', side_effect=RuntimeError('boom'))
+    @patch('workspaces.views.storage.upload_material', return_value='workspace_1/deck.pdf')
+    def test_rasterization_failure_still_stores_material(self, mock_upload_material, mock_rasterize):
+        content = _make_pdf_bytes(1)
+        upload = SimpleUploadedFile('deck.pdf', content, content_type='application/pdf')
+        response = self.client.post(reverse('workspace_detail', args=[self.workspace.pk]), {'file': upload})
+        self.assertEqual(response.status_code, 302)
+        material = Material.objects.get(workspace=self.workspace)
+        self.assertEqual(material.slides.count(), 0)
+
+
+class PresenterViewsTests(TestCase):
+    def setUp(self):
+        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='PRESNT',
+        )
+        self.material = Material.objects.create(workspace=self.workspace, file='workspace_1/deck.pdf', extracted_text='text')
+        for i in range(3):
+            Slide.objects.create(material=self.material, index=i, image=f'workspace_1/material_1/slide_{i:04d}.png')
+        self.client.login(username='teacher', password='pw')
+
+    def test_present_material_with_slides_starts_presentation(self):
+        response = self.client.post(reverse('present_material', args=[self.workspace.pk, self.material.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.workspace.refresh_from_db()
+        self.assertEqual(self.workspace.live_material_id, self.material.pk)
+        self.assertEqual(self.workspace.live_slide_index, 0)
+
+    def test_present_material_without_slides_errors(self):
+        empty_material = Material.objects.create(workspace=self.workspace, file='workspace_1/other.pptx', extracted_text='text')
+        response = self.client.post(reverse('present_material', args=[self.workspace.pk, empty_material.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.workspace.refresh_from_db()
+        self.assertIsNone(self.workspace.live_material_id)
+
+    def test_presenter_next_and_prev_clamp_at_bounds(self):
+        self.client.post(reverse('present_material', args=[self.workspace.pk, self.material.pk]))
+
+        self.client.post(reverse('presenter_prev', args=[self.workspace.pk]))  # already at 0 — no-op
+        self.workspace.refresh_from_db()
+        self.assertEqual(self.workspace.live_slide_index, 0)
+
+        for _ in range(5):  # more than the 3 slides available — should clamp at the last index (2)
+            self.client.post(reverse('presenter_next', args=[self.workspace.pk]))
+        self.workspace.refresh_from_db()
+        self.assertEqual(self.workspace.live_slide_index, 2)
+
+        self.client.post(reverse('presenter_prev', args=[self.workspace.pk]))
+        self.workspace.refresh_from_db()
+        self.assertEqual(self.workspace.live_slide_index, 1)
+
+    def test_stop_presenting_clears_live_state(self):
+        self.client.post(reverse('present_material', args=[self.workspace.pk, self.material.pk]))
+        self.client.post(reverse('stop_presenting', args=[self.workspace.pk]))
+        self.workspace.refresh_from_db()
+        self.assertIsNone(self.workspace.live_material_id)
+        self.assertIsNone(self.workspace.live_slide_index)
+
+    def test_non_lecture_workspace_404s(self):
+        other_workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Socratic Class', mode=Workspace.Mode.SOCRATIC, join_code='SOCPRS',
+        )
+        response = self.client.post(reverse('present_material', args=[other_workspace.pk, self.material.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_other_teacher_cannot_present(self):
+        get_user_model().objects.create_user(username='other', password='pw')
+        self.client.login(username='other', password='pw')
+        response = self.client.post(reverse('present_material', args=[self.workspace.pk, self.material.pk]))
+        self.assertEqual(response.status_code, 404)
+
+
+class SlideImageAuthorizationTests(TestCase):
+    """The core enforcement point for the live slideshow: students can view
+    backward but never ahead of the teacher's current slide, checked fresh
+    from the DB on every single request — see views.slide_image."""
+
+    def setUp(self):
+        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='SLDIMG',
+        )
+        self.material = Material.objects.create(workspace=self.workspace, file='workspace_1/deck.pdf', extracted_text='text')
+        for i in range(3):
+            Slide.objects.create(material=self.material, index=i, image=f'workspace_1/material_1/slide_{i:04d}.png')
+        self.workspace.live_material = self.material
+        self.workspace.live_slide_index = 1
+        self.workspace.save(update_fields=['live_material', 'live_slide_index'])
+
+        self.student_session = StudentSession.objects.create(
+            workspace=self.workspace, display_name='Alex', session_id='sess-1',
+        )
+
+    def _join_as_student(self, session=None):
+        session_obj = session or self.student_session
+        s = self.client.session
+        s.save()
+        session_obj.session_id = s.session_key
+        session_obj.save(update_fields=['session_id'])
+
+    def _url(self, index, material=None):
+        return reverse('slide_image', args=[self.workspace.pk, (material or self.material).pk, index])
+
+    @patch('workspaces.views.storage.download_file', return_value=b'fake-png-bytes')
+    def test_owning_teacher_can_fetch_any_index(self, mock_download):
+        self.client.login(username='teacher', password='pw')
+        response = self.client.get(self._url(2))  # ahead of live_slide_index=1 — fine for the owning teacher
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'fake-png-bytes')
+        self.assertEqual(response['Content-Type'], 'image/png')
+
+    def test_other_teacher_forbidden(self):
+        get_user_model().objects.create_user(username='other', password='pw')
+        self.client.login(username='other', password='pw')
+        response = self.client.get(self._url(0))
+        self.assertEqual(response.status_code, 403)
+
+    @patch('workspaces.views.storage.download_file', return_value=b'fake-png-bytes')
+    def test_student_can_fetch_current_live_index(self, mock_download):
+        self._join_as_student()
+        response = self.client.get(self._url(1))
+        self.assertEqual(response.status_code, 200)
+
+    @patch('workspaces.views.storage.download_file', return_value=b'fake-png-bytes')
+    def test_student_can_fetch_earlier_slide(self, mock_download):
+        self._join_as_student()
+        response = self.client.get(self._url(0))
+        self.assertEqual(response.status_code, 200)
+
+    def test_student_cannot_fetch_slide_ahead_of_live_index(self):
+        self._join_as_student()
+        response = self.client.get(self._url(2))  # live_slide_index is 1
+        self.assertEqual(response.status_code, 403)
+
+    def test_student_cannot_fetch_slide_of_different_material(self):
+        other_material = Material.objects.create(workspace=self.workspace, file='workspace_1/other.pdf', extracted_text='')
+        Slide.objects.create(material=other_material, index=0, image='workspace_1/material_2/slide_0000.png')
+        self._join_as_student()
+        response = self.client.get(self._url(0, material=other_material))
+        self.assertEqual(response.status_code, 403)
+
+    def test_nothing_presenting_forbidden(self):
+        self.workspace.live_material = None
+        self.workspace.live_slide_index = None
+        self.workspace.save(update_fields=['live_material', 'live_slide_index'])
+        self._join_as_student()
+        response = self.client.get(self._url(0))
+        self.assertEqual(response.status_code, 403)
+
+    def test_non_lecture_mode_forbidden(self):
+        self.workspace.mode = Workspace.Mode.SOCRATIC
+        self.workspace.save(update_fields=['mode'])
+        self._join_as_student()
+        response = self.client.get(self._url(0))
+        self.assertEqual(response.status_code, 403)
+
+    def test_student_of_different_workspace_forbidden(self):
+        other_workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Other', mode=Workspace.Mode.LECTURE, join_code='OTHRWS',
+        )
+        other_session = StudentSession.objects.create(
+            workspace=other_workspace, display_name='Sam', session_id='sess-2',
+        )
+        self._join_as_student(session=other_session)
+        response = self.client.get(self._url(0))
+        self.assertEqual(response.status_code, 403)
+
+
+class LiveStatusTests(TestCase):
+    def setUp(self):
+        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='LIVSTA',
+        )
+        self.student_session = StudentSession.objects.create(
+            workspace=self.workspace, display_name='Alex', session_id='sess-1',
+        )
+
+    def _join_as_student(self):
+        session = self.client.session
+        session.save()
+        self.student_session.session_id = session.session_key
+        self.student_session.save(update_fields=['session_id'])
+
+    def test_no_session_redirects(self):
+        response = self.client.get(reverse('live_status'))
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response['HX-Redirect'], reverse('student_join'))
+
+    def test_not_presenting_shows_message(self):
+        self._join_as_student()
+        response = self.client.get(reverse('live_status'))
+        self.assertContains(response, "hasn't started a presentation")
+
+    def test_presenting_shows_slide_position(self):
+        material = Material.objects.create(workspace=self.workspace, file='workspace_1/deck.pdf', extracted_text='')
+        for i in range(4):
+            Slide.objects.create(material=material, index=i, image=f'workspace_1/material_1/slide_{i:04d}.png')
+        self.workspace.live_material = material
+        self.workspace.live_slide_index = 2
+        self.workspace.save(update_fields=['live_material', 'live_slide_index'])
+
+        self._join_as_student()
+        response = self.client.get(reverse('live_status'))
+        self.assertContains(response, 'slide 3 of 4')

@@ -27,6 +27,16 @@ class Workspace(models.Model):
     # "has an outline been generated yet" flag.
     lecture_outline = models.TextField(blank=True, default='')
     lecture_outline_generated_at = models.DateTimeField(null=True, blank=True)
+    # Live Slideshow (Lecture Mode only): which material is currently being
+    # presented, and which of its slides the teacher is on. live_material is
+    # None whenever nothing is being presented — keep both fields in sync in
+    # every view that touches them. SET_NULL (not CASCADE) is required here:
+    # the FK points *from* Workspace *to* Material, so CASCADE would delete
+    # the Workspace itself if its live Material were deleted.
+    live_material = models.ForeignKey(
+        'Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    live_slide_index = models.PositiveIntegerField(null=True, blank=True, default=None)
 
     def __str__(self):
         return f'{self.name} ({self.get_mode_display()})'
@@ -48,6 +58,26 @@ class Material(models.Model):
 
     def __str__(self):
         return f'Material for {self.workspace.name}: {self.file}'
+
+
+class Slide(models.Model):
+    """One rasterized page of a presentable (PDF-only — see utils.rasterize_pdf)
+    Material, used by the Live Slideshow feature. A Material with no Slide
+    rows simply isn't eligible to be presented (PPTX materials, or PDFs
+    where rasterization failed) — no separate eligibility flag needed."""
+
+    material = models.ForeignKey(Material, on_delete=models.CASCADE, related_name='slides')
+    index = models.PositiveIntegerField()  # 0-based page number within the deck
+    image = models.CharField(max_length=500)  # Supabase Storage path to the rendered PNG
+
+    class Meta:
+        ordering = ['index']
+        constraints = [
+            models.UniqueConstraint(fields=['material', 'index'], name='unique_slide_index_per_material'),
+        ]
+
+    def __str__(self):
+        return f'Slide {self.index} of material {self.material_id}'
 
 
 class StudentSession(models.Model):

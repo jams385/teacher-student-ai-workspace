@@ -6,6 +6,7 @@ dj-database-url
 anthropic
 google-genai
 pypdf
+pymupdf
 python-pptx
 supabase
 gunicorn

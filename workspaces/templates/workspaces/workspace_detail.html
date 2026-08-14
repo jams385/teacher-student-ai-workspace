@@ -80,6 +80,11 @@
 </script>
 
 {% if workspace.mode == 'lecture' %}
+<h2>Live slideshow</h2>
+<section id="presenter">
+    {% include 'workspaces/partials/_presenter.html' %}
+</section>
+
 <h2>Lecture outline</h2>
 {% if workspace.lecture_outline %}
     <p>Generated {{ workspace.lecture_outline_generated_at|date:"M j, Y g:i A" }}</p>

@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib import messages
 from django.db.models import Count, Q
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -13,8 +13,8 @@ from django.views.decorators.http import require_POST
 
 from . import ai_client, moderation, storage
 from .forms import MaterialUploadForm, StudentJoinForm, WorkspaceForm
-from .models import Flag, Material, Message, StudentSession, Workspace
-from .utils import extract_pdf_text, extract_pptx_text, generate_unique_join_code, keyword_frequency
+from .models import Flag, Material, Message, Slide, StudentSession, Workspace
+from .utils import extract_pdf_text, extract_pptx_text, generate_unique_join_code, keyword_frequency, rasterize_pdf
 
 
 def teacher_signup(request):
@@ -103,13 +103,53 @@ def workspace_detail(request, pk):
                 messages.error(request, f"Couldn't upload \"{uploaded_file.name}\": {e}")
                 return redirect('workspace_detail', pk=workspace.pk)
 
-            Material.objects.create(workspace=workspace, file=storage_path, extracted_text=extracted_text)
+            material = Material.objects.create(workspace=workspace, file=storage_path, extracted_text=extracted_text)
 
-            if extraction_failed:
+            # Live Slideshow eligibility (PDF-only — see Slide model and
+            # utils.rasterize_pdf's docstring for why PPTX isn't rasterized).
+            # A rasterization failure never blocks storing the Material —
+            # it just means material.slides stays empty, which is also
+            # exactly the signal the "Present" button's availability uses,
+            # so no separate eligibility flag is needed.
+            rasterization_failed = False
+            if not is_pptx:
+                try:
+                    page_images = rasterize_pdf(content)
+                except Exception:
+                    # PyMuPDF doesn't expose one clean exception type either
+                    # (see rasterize_pdf's docstring) — catch broadly here
+                    # too, same reasoning as the PPTX extraction branch above.
+                    rasterization_failed = True
+                else:
+                    slides = []
+                    for index, image_bytes in enumerate(page_images):
+                        try:
+                            image_path = storage.upload_slide_image(workspace.id, material.id, index, image_bytes)
+                        except storage.StorageError:
+                            rasterization_failed = True
+                            break
+                        slides.append(Slide(material=material, index=index, image=image_path))
+                    else:
+                        Slide.objects.bulk_create(slides)
+
+            if extraction_failed and rasterization_failed:
+                messages.warning(
+                    request,
+                    f'"{uploaded_file.name}" was uploaded, but its text and slide images couldn\'t be '
+                    'extracted (it may be scanned or corrupted) — it won\'t be usable as AI context, '
+                    'an outline source, or a live slideshow yet.',
+                )
+            elif extraction_failed:
                 messages.warning(
                     request,
                     f'"{uploaded_file.name}" was uploaded, but its text couldn\'t be extracted '
                     '(it may be scanned or corrupted) — it won\'t be usable as AI context yet.',
+                )
+            elif rasterization_failed:
+                messages.warning(
+                    request,
+                    f'"{uploaded_file.name}" was uploaded, but its slide images couldn\'t be generated '
+                    '— it won\'t be available for the live slideshow.',
                 )
             else:
                 messages.success(request, f'Uploaded "{uploaded_file.name}".')
@@ -117,11 +157,14 @@ def workspace_detail(request, pk):
     else:
         form = MaterialUploadForm()
 
-    return render(request, 'workspaces/workspace_detail.html', {
+    context = {
         'workspace': workspace,
         'materials': workspace.materials.order_by('-uploaded_at'),
         'form': form,
-    })
+    }
+    if workspace.mode == Workspace.Mode.LECTURE:
+        context.update(_presenter_context(workspace))
+    return render(request, 'workspaces/workspace_detail.html', context)
 
 
 @login_required
@@ -161,22 +204,161 @@ def generate_lecture_outline(request, pk):
 @require_POST
 def material_delete(request, pk, material_pk):
     """Teacher-triggered: remove an uploaded material, in any workspace mode.
-    Deletes the underlying Supabase Storage object first, then the Material
-    row — but a storage failure doesn't block the row deletion, since
-    leaving a DB row the teacher explicitly asked to remove is worse than a
-    rare orphaned storage object, and there's no retry path from here."""
+    Deletes the underlying Supabase Storage objects first (the material file
+    itself, plus any rasterized Slide images), then the Material row (Slide
+    rows cascade automatically) — but a storage failure doesn't block the
+    row deletion, since leaving a DB row the teacher explicitly asked to
+    remove is worse than a rare orphaned storage object, and there's no
+    retry path from here. If this material is currently being presented,
+    Workspace.live_material is cleared via on_delete=SET_NULL automatically."""
     workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
     material = get_object_or_404(Material, pk=material_pk, workspace=workspace)
 
+    storage_failed = False
+    for slide in material.slides.all():
+        try:
+            storage.delete_material(slide.image)
+        except storage.StorageError:
+            storage_failed = True
+
     try:
         storage.delete_material(material.file)
-    except storage.StorageError as e:
-        messages.warning(request, f"Removed from the list, but couldn't delete the underlying file: {e}")
+    except storage.StorageError:
+        storage_failed = True
+
+    if storage_failed:
+        messages.warning(request, "Removed from the list, but couldn't delete every underlying file.")
     else:
         messages.success(request, f'Deleted "{material.file}".')
 
     material.delete()
     return redirect('workspace_detail', pk=workspace.pk)
+
+
+def _presenter_context(workspace):
+    return {
+        'workspace': workspace,
+        'materials_with_slides': workspace.materials.filter(slides__isnull=False).distinct().order_by('-uploaded_at'),
+        'slide_count': workspace.live_material.slides.count() if workspace.live_material_id else 0,
+    }
+
+
+@login_required
+@require_POST
+def present_material(request, pk, material_pk):
+    """Teacher-triggered: start presenting a material's slides live. Only
+    materials with rasterized Slide rows (PDF-only, and only if rasterization
+    succeeded — see workspace_detail's upload handler) can be presented."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
+    material = get_object_or_404(Material, pk=material_pk, workspace=workspace)
+
+    if not material.slides.exists():
+        messages.error(request, "This material has no slide images to present (PDF-only, and it may have failed to render).")
+        return render(request, 'workspaces/partials/_presenter.html', _presenter_context(workspace))
+
+    workspace.live_material = material
+    workspace.live_slide_index = 0
+    workspace.save(update_fields=['live_material', 'live_slide_index'])
+    return render(request, 'workspaces/partials/_presenter.html', _presenter_context(workspace))
+
+
+@login_required
+@require_POST
+def stop_presenting(request, pk):
+    """Teacher-triggered: end the live presentation. Explicit action, matching
+    this app's other explicit-lifecycle patterns (generate outline, delete
+    material) — there's no way to detect a teacher just closing the tab."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
+    workspace.live_material = None
+    workspace.live_slide_index = None
+    workspace.save(update_fields=['live_material', 'live_slide_index'])
+    return render(request, 'workspaces/partials/_presenter.html', _presenter_context(workspace))
+
+
+@login_required
+@require_POST
+def presenter_next(request, pk):
+    """Teacher-triggered: advance the live slide by one, clamped to the last slide."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
+    if workspace.live_material_id:
+        last_index = workspace.live_material.slides.count() - 1
+        workspace.live_slide_index = min(workspace.live_slide_index + 1, last_index)
+        workspace.save(update_fields=['live_slide_index'])
+    return render(request, 'workspaces/partials/_presenter.html', _presenter_context(workspace))
+
+
+@login_required
+@require_POST
+def presenter_prev(request, pk):
+    """Teacher-triggered: go back one live slide, clamped to the first slide."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
+    if workspace.live_material_id:
+        workspace.live_slide_index = max(workspace.live_slide_index - 1, 0)
+        workspace.save(update_fields=['live_slide_index'])
+    return render(request, 'workspaces/partials/_presenter.html', _presenter_context(workspace))
+
+
+def slide_image(request, pk, material_pk, index):
+    """Proxies one rasterized slide's PNG bytes from Supabase Storage.
+
+    This is the actual enforcement point for "students can't see ahead of
+    the teacher" — it re-checks index <= workspace.live_slide_index live
+    from the DB on every single request, which is exactly why slide bytes
+    are proxied through this view instead of handing out a Supabase signed
+    URL (a signed URL, once issued, would keep working regardless of where
+    the teacher's pointer moves afterward).
+
+    The owning teacher gets unrestricted access (any index, any material,
+    even while nothing is being presented) to preview their own slides.
+    Everyone else must be a joined student of this exact workspace, with
+    this exact material currently live, requesting an index at or before
+    the teacher's current position.
+    """
+    workspace = get_object_or_404(Workspace, pk=pk)
+    material = get_object_or_404(Material, pk=material_pk, workspace=workspace)
+    slide = get_object_or_404(Slide, material=material, index=index)
+
+    is_owning_teacher = request.user.is_authenticated and workspace.teacher_id == request.user.id
+    if not is_owning_teacher:
+        student_session = _get_student_session(request)
+        if (
+            student_session is None
+            or student_session.workspace_id != workspace.id
+            or workspace.mode != Workspace.Mode.LECTURE
+            or workspace.live_material_id != material.id
+            or workspace.live_slide_index is None
+            or index > workspace.live_slide_index
+        ):
+            # 403, not 404, uniformly for every entitlement failure
+            # (including "no session") — don't leak resource existence to
+            # an unauthenticated caller by distinguishing the cases.
+            return HttpResponseForbidden()
+
+    try:
+        content = storage.download_file(slide.image)
+    except storage.StorageError:
+        return HttpResponse(status=502)
+    return HttpResponse(content, content_type='image/png')
+
+
+def live_status(request):
+    """HTMX polling endpoint: reports the teacher's current live slide
+    position so a joined student's page can follow along. No pk in the URL —
+    identity comes from the session cookie, same convention as
+    student_chat/send_message."""
+    student_session = _get_student_session(request)
+    if student_session is None:
+        # Session cookie expired mid-poll — same handling as send_message.
+        response = HttpResponse(status=204)
+        response['HX-Redirect'] = reverse('student_join')
+        return response
+
+    workspace = student_session.workspace
+    slide_count = workspace.live_material.slides.count() if workspace.live_material_id else 0
+    return render(request, 'workspaces/partials/_slideshow.html', {
+        'workspace': workspace,
+        'slide_count': slide_count,
+    })
 
 
 @login_required
@@ -295,11 +477,17 @@ def student_chat(request):
         messages.info(request, 'Enter your join code to start chatting.')
         return redirect('student_join')
 
-    return render(request, 'workspaces/chat.html', {
+    workspace = student_session.workspace
+    context = {
         'student_session': student_session,
-        'workspace': student_session.workspace,
+        'workspace': workspace,
         'chat_messages': student_session.messages.all(),
-    })
+    }
+    if workspace.mode == Workspace.Mode.LECTURE:
+        # Seed initial slideshow state on page load, so students don't have
+        # to wait for the first live_status poll to see it (see chat.html).
+        context['slide_count'] = workspace.live_material.slides.count() if workspace.live_material_id else 0
+    return render(request, 'workspaces/chat.html', context)
 
 
 @require_POST
