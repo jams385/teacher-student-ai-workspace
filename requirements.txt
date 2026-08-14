@@ -6,6 +6,7 @@ dj-database-url
 anthropic
 google-genai
 pypdf
+python-pptx
 supabase
 gunicorn
 whitenoise

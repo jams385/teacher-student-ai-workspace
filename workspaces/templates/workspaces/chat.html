@@ -7,6 +7,17 @@
 <p>Mode: {{ workspace.get_mode_display }}</p>
 <p>Chatting as <strong>{{ student_session.display_name }}</strong></p>
 
+{% if workspace.mode == 'lecture' %}
+<section id="lecture-outline">
+    <h2>Lecture outline</h2>
+    {% if workspace.lecture_outline %}
+        <div>{{ workspace.lecture_outline|linebreaksbr }}</div>
+    {% else %}
+        <p><em>Your teacher hasn't generated a lecture outline yet.</em></p>
+    {% endif %}
+</section>
+{% endif %}
+
 <div id="message-list">
     {% include 'workspaces/partials/_messages.html' %}
 </div>

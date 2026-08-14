@@ -3,6 +3,7 @@ import random
 import re
 from collections import Counter
 
+from pptx import Presentation
 from pypdf import PdfReader
 
 from .models import Workspace
@@ -52,6 +53,34 @@ def extract_pdf_text(content: bytes) -> str:
     """
     reader = PdfReader(io.BytesIO(content))
     return '\n\n'.join(page.extract_text() or '' for page in reader.pages)
+
+
+def extract_pptx_text(content: bytes) -> str:
+    """Extract text from PPTX bytes, slide by slide, joined with blank lines.
+
+    Pulls text from every shape with a text frame (titles, bullets, text
+    boxes) on each slide — deliberately excludes speaker notes
+    (slide.notes_slide), since those are a teacher's private talking points,
+    not something students saw on screen or should have surfaced to them via
+    the AI chat's course-material grounding.
+
+    Callers should treat any exception here as recoverable (same as
+    extract_pdf_text) — still store the raw file, just without extracted
+    text. Unlike pypdf's single PyPdfError, python-pptx doesn't expose one
+    reliable exception type for "this isn't a valid .pptx" (a corrupt file
+    can surface as a bad zip, a missing part, or an XML parse error
+    depending on how it's broken), so callers should catch broadly here.
+    """
+    presentation = Presentation(io.BytesIO(content))
+    slide_texts = []
+    for slide in presentation.slides:
+        shape_texts = [
+            shape.text_frame.text
+            for shape in slide.shapes
+            if shape.has_text_frame and shape.text_frame.text
+        ]
+        slide_texts.append('\n'.join(shape_texts))
+    return '\n\n'.join(slide_texts)
 
 
 def keyword_frequency(text_items, top_n=20):

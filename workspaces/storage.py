@@ -73,3 +73,19 @@ def upload_material(workspace_id: int, filename: str, content: bytes, content_ty
         raise StorageError(f'Supabase Storage upload failed: {e}') from e
 
     return path
+
+
+def delete_material(path: str) -> None:
+    """Delete a course material file from Supabase Storage.
+
+    Args:
+        path: The object's path within the bucket, as stored in `Material.file`
+            (i.e. exactly what upload_material returned when the file was uploaded).
+
+    Raises:
+        StorageError: if the delete request fails.
+    """
+    try:
+        _get_client().storage.from_(BUCKET_NAME).remove([path])
+    except (SupabaseException, StorageException) as e:
+        raise StorageError(f'Supabase Storage delete failed: {e}') from e

@@ -36,14 +36,19 @@ class StudentJoinForm(forms.Form):
 class MaterialUploadForm(forms.Form):
     MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20MB — the whole file is read into memory for text extraction + upload
 
-    file = forms.FileField(label='Course material (PDF)')
+    PDF_CONTENT_TYPE = 'application/pdf'
+    PPTX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+
+    file = forms.FileField(label='Course material (PDF or PowerPoint)')
 
     def clean_file(self):
         uploaded_file = self.cleaned_data['file']
         name = uploaded_file.name.lower()
         content_type = getattr(uploaded_file, 'content_type', '') or ''
-        if not name.endswith('.pdf') and content_type != 'application/pdf':
-            raise forms.ValidationError('Please upload a PDF file.')
+        is_pdf = name.endswith('.pdf') or content_type == self.PDF_CONTENT_TYPE
+        is_pptx = name.endswith('.pptx') or content_type == self.PPTX_CONTENT_TYPE
+        if not is_pdf and not is_pptx:
+            raise forms.ValidationError('Please upload a PDF or PowerPoint (.pptx) file.')
         if uploaded_file.size > self.MAX_UPLOAD_BYTES:
             raise forms.ValidationError('That file is too large — please keep uploads under 20MB.')
         return uploaded_file

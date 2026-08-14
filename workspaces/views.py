@@ -8,12 +8,13 @@ from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from . import ai_client, moderation, storage
 from .forms import MaterialUploadForm, StudentJoinForm, WorkspaceForm
 from .models import Flag, Material, Message, StudentSession, Workspace
-from .utils import extract_pdf_text, generate_unique_join_code, keyword_frequency
+from .utils import extract_pdf_text, extract_pptx_text, generate_unique_join_code, keyword_frequency
 
 
 def teacher_signup(request):
@@ -67,20 +68,35 @@ def workspace_detail(request, pk):
         if form.is_valid():
             uploaded_file = form.cleaned_data['file']
             content = uploaded_file.read()  # read once — reused for both extraction and upload below
+            is_pptx = uploaded_file.name.lower().endswith('.pptx')
 
             extraction_failed = False
-            try:
-                extracted_text = extract_pdf_text(content)
-            except PyPdfError:
-                extracted_text = ''
-                extraction_failed = True
+            if is_pptx:
+                try:
+                    extracted_text = extract_pptx_text(content)
+                except Exception:
+                    # python-pptx doesn't expose one reliable exception type
+                    # for "this isn't a valid .pptx" (bad zip, missing part,
+                    # or an XML parse error can all show up depending on how
+                    # the file is broken — see extract_pptx_text's
+                    # docstring), so this branch catches broadly, unlike
+                    # pypdf's single clean exception below.
+                    extracted_text = ''
+                    extraction_failed = True
+            else:
+                try:
+                    extracted_text = extract_pdf_text(content)
+                except PyPdfError:
+                    extracted_text = ''
+                    extraction_failed = True
 
+            default_content_type = MaterialUploadForm.PPTX_CONTENT_TYPE if is_pptx else MaterialUploadForm.PDF_CONTENT_TYPE
             try:
                 storage_path = storage.upload_material(
                     workspace.id,
                     uploaded_file.name,
                     content,
-                    uploaded_file.content_type or 'application/pdf',
+                    uploaded_file.content_type or default_content_type,
                 )
             except storage.StorageError as e:
                 # Extraction outcome doesn't matter — nothing was saved.
@@ -106,6 +122,61 @@ def workspace_detail(request, pk):
         'materials': workspace.materials.order_by('-uploaded_at'),
         'form': form,
     })
+
+
+@login_required
+@require_POST
+def generate_lecture_outline(request, pk):
+    """Teacher-triggered: generate (or regenerate) a Lecture Mode workspace's
+    whole-deck outline from all of its materials pooled together, the same
+    pooling send_message() already does for course_material_context. Plain
+    POST + redirect, matching workspace_detail.html's non-HTMX style —
+    HTMX in this codebase is reserved for chat send and the dashboard's
+    flag-review row swap."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
+
+    material_text = '\n\n'.join(
+        material.extracted_text
+        for material in workspace.materials.all()
+        if material.extracted_text
+    )
+    if not material_text:
+        messages.warning(request, "Upload course materials with extractable text before generating an outline.")
+        return redirect('workspace_detail', pk=workspace.pk)
+
+    try:
+        outline = ai_client.summarize_lecture_material(material_text)
+    except ai_client.AIClientError as e:
+        messages.error(request, f"Couldn't generate the outline: {e}")
+        return redirect('workspace_detail', pk=workspace.pk)
+
+    workspace.lecture_outline = outline
+    workspace.lecture_outline_generated_at = timezone.now()
+    workspace.save(update_fields=['lecture_outline', 'lecture_outline_generated_at'])
+    messages.success(request, 'Lecture outline generated.')
+    return redirect('workspace_detail', pk=workspace.pk)
+
+
+@login_required
+@require_POST
+def material_delete(request, pk, material_pk):
+    """Teacher-triggered: remove an uploaded material, in any workspace mode.
+    Deletes the underlying Supabase Storage object first, then the Material
+    row — but a storage failure doesn't block the row deletion, since
+    leaving a DB row the teacher explicitly asked to remove is worse than a
+    rare orphaned storage object, and there's no retry path from here."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
+    material = get_object_or_404(Material, pk=material_pk, workspace=workspace)
+
+    try:
+        storage.delete_material(material.file)
+    except storage.StorageError as e:
+        messages.warning(request, f"Removed from the list, but couldn't delete the underlying file: {e}")
+    else:
+        messages.success(request, f'Deleted "{material.file}".')
+
+    material.delete()
+    return redirect('workspace_detail', pk=workspace.pk)
 
 
 @login_required

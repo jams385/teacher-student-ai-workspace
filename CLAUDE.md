@@ -4,7 +4,7 @@
 
 A controlled AI environment where students interact with an AI learning assistant, and teachers define and monitor how that AI behaves. Teachers create a "workspace" (an AI chat room) for their class, set a behavior **mode**, optionally upload course materials, and students join via a code and chat. Teachers get a dashboard to review usage and transcripts.
 
-**Core pitch:** don't prevent AI use — teach responsible use. The AI is deliberately restricted (Socratic questioning, homework guidance without direct answers) so it supports learning instead of replacing it.
+**Core pitch:** don't prevent AI use — teach responsible use. The AI is deliberately restricted per mode (Socratic questioning, homework guidance without direct answers, or direct lecture-content explanation grounded in uploaded slides) so it supports learning instead of replacing it.
 
 ---
 
@@ -28,7 +28,8 @@ This is what makes "student tries to jailbreak the AI" structurally not work, re
 # ai_client.py — the ONLY place that talks to the AI provider
 MODE_PROMPTS = {
     "socratic": "You are in Socratic Mode for a classroom assistant. Never give direct answers. Only respond with guiding questions that help the student reach the answer themselves.",
-    "homework": "You are in Homework Mode. You may check a student's work and point out errors, but never state the correct final answer directly — only nudge the student toward it."
+    "homework": "You are in Homework Mode. You may check a student's work and point out errors, but never state the correct final answer directly — only nudge the student toward it.",
+    "lecture": "You are in Lecture Mode. The class has already covered this material, so explain and clarify directly (define terms, walk through examples, answer factual questions) grounded in the uploaded lecture material — unlike Socratic/Homework, you're not withholding answers here."
 }
 
 def get_ai_response(mode: str, conversation_history: list, student_message: str, course_material_context: str = "") -> str:
@@ -48,8 +49,8 @@ The keyword-flagging feature ("ignore previous instructions", "pretend you're no
 
 ## Data model (starting point)
 
-- `Workspace` — teacher (FK to User), name, mode (choices: `socratic`, `homework`), join_code, created_at
-- `Material` — workspace (FK), file (Supabase Storage path), extracted_text, uploaded_at
+- `Workspace` — teacher (FK to User), name, mode (choices: `socratic`, `homework`, `lecture`), join_code, created_at, lecture_outline (Lecture Mode only — a static, whole-deck outline generated on teacher demand), lecture_outline_generated_at
+- `Material` — workspace (FK), file (Supabase Storage path), extracted_text, uploaded_at — PDF or PowerPoint (`.pptx`), extraction via `pypdf`/`python-pptx` respectively; deletable by the teacher (removes both the DB row and the Supabase Storage object)
 - `StudentSession` — workspace (FK), display_name, session_id, joined_at
 - `Message` — workspace (FK), student_session (FK), role (`student`/`ai`), content, created_at
 - `Flag` — message (FK), reason (e.g. `keyword_match`), matched_text, created_at, reviewed (bool)
@@ -59,14 +60,16 @@ The keyword-flagging feature ("ignore previous instructions", "pretend you're no
 - **Workspace** — an AI chat room the teacher creates for students
 - **Socratic Mode** — the AI answers a question with a question, never the direct answer
 - **Homework Mode** — the AI checks/nudges but never gives the final answer outright
+- **Lecture Mode** — teacher uploads presentation slides (PDF/PPTX) and can generate a rough whole-deck outline for students to reference; the AI explains/clarifies lecture content directly (not answer-withholding like Socratic/Homework), grounded in the uploaded slides
 
 ---
 
 ## MVP feature checklist
 
 - [x] Teacher auth (Django's built-in auth) + create/manage workspaces
-- [x] Mode selection per workspace: Socratic / Homework (hardcoded prompts, no custom editor in MVP)
-- [x] Upload course texts/PDFs → extract text (`pypdf`) → store in Supabase Storage + `Material` model
+- [x] Mode selection per workspace: Socratic / Homework / Lecture (hardcoded prompts, no custom editor in MVP)
+- [x] Upload course texts/PDFs/PPTX → extract text (`pypdf` / `python-pptx`) → store in Supabase Storage + `Material` model; teacher can delete a material (DB row + Storage object)
+- [x] Lecture Mode: teacher-triggered whole-deck outline generation (`ai_client.summarize_lecture_material`), shown to students alongside chat — static, no live slide-by-slide sync
 - [x] Student joins workspace via join code (lightweight session, no full account)
 - [x] Student chat interface (HTMX-driven, no full page reloads)
 - [x] Teacher dashboard: open student transcripts, message counts, commonly asked questions (simple keyword frequency for MVP — skip real clustering)

@@ -18,6 +18,7 @@
             <th>File</th>
             <th>Text extracted</th>
             <th>Uploaded</th>
+            <th></th>
         </tr>
     </thead>
     <tbody>
@@ -26,6 +27,12 @@
             <td>{{ material.file }}</td>
             <td>{% if material.extracted_text %}Yes{% else %}No{% endif %}</td>
             <td>{{ material.uploaded_at|date:"M j, Y" }}</td>
+            <td>
+                <form method="post" action="{% url 'material_delete' pk=workspace.pk material_pk=material.pk %}" onsubmit="return confirm('Delete this material? This cannot be undone.');">
+                    {% csrf_token %}
+                    <button type="submit">Delete</button>
+                </form>
+            </td>
         </tr>
     {% endfor %}
     </tbody>
@@ -34,10 +41,55 @@
 <p>No course materials uploaded yet.</p>
 {% endif %}
 
-<h3>Upload a PDF</h3>
-<form method="post" enctype="multipart/form-data">
+<h3>Upload a PDF or PowerPoint</h3>
+<form method="post" enctype="multipart/form-data" id="material-upload-form">
     {% csrf_token %}
     {{ form.as_p }}
-    <button type="submit">Upload</button>
+    <button type="submit" id="material-upload-button">Upload</button>
+    <span id="material-upload-status" hidden>Uploading&hellip; this can take a moment for larger files.</span>
 </form>
+<script>
+    // Plain multipart POST + full page reload (not HTMX, matching this
+    // page's convention — see generate_lecture_outline in views.py), so
+    // extraction + the Supabase upload can take a few seconds with no
+    // visual feedback otherwise. This just disables the button and shows
+    // a status message immediately on submit; the eventual redirect/reload
+    // is what actually clears it.
+    (function () {
+        var form = document.getElementById('material-upload-form');
+        var button = document.getElementById('material-upload-button');
+        var status = document.getElementById('material-upload-status');
+
+        form.addEventListener('submit', function () {
+            if (!form.checkValidity()) return; // let the browser show validation errors instead
+            button.disabled = true;
+            button.textContent = 'Uploading…';
+            status.hidden = false;
+        });
+
+        // If the page is restored from bfcache (e.g. the user hits back
+        // after uploading), reset the stale "uploading" state.
+        window.addEventListener('pageshow', function (event) {
+            if (event.persisted) {
+                button.disabled = false;
+                button.textContent = 'Upload';
+                status.hidden = true;
+            }
+        });
+    })();
+</script>
+
+{% if workspace.mode == 'lecture' %}
+<h2>Lecture outline</h2>
+{% if workspace.lecture_outline %}
+    <p>Generated {{ workspace.lecture_outline_generated_at|date:"M j, Y g:i A" }}</p>
+    <div>{{ workspace.lecture_outline|linebreaksbr }}</div>
+{% else %}
+    <p>No outline generated yet.</p>
+{% endif %}
+<form method="post" action="{% url 'generate_lecture_outline' pk=workspace.pk %}">
+    {% csrf_token %}
+    <button type="submit">{% if workspace.lecture_outline %}Regenerate outline{% else %}Generate outline{% endif %}</button>
+</form>
+{% endif %}
 {% endblock %}

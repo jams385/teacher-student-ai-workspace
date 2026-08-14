@@ -1,11 +1,30 @@
-from unittest.mock import patch
+import io
+from unittest.mock import MagicMock, patch
+
+from pptx import Presentation
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
-from .models import Flag, Message, StudentSession, Workspace
-from . import moderation
+from . import ai_client, moderation, storage
+from .forms import MaterialUploadForm
+from .models import Flag, Material, Message, StudentSession, Workspace
+from .utils import extract_pptx_text
+
+
+def _make_pptx_bytes(slide_texts):
+    """Build a minimal in-memory .pptx with one text box per given slide text."""
+    presentation = Presentation()
+    layout = presentation.slide_layouts[6]  # blank layout
+    for text in slide_texts:
+        slide = presentation.slides.add_slide(layout)
+        box = slide.shapes.add_textbox(0, 0, 100, 100)
+        box.text_frame.text = text
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+    return buffer.getvalue()
 
 
 class FindJailbreakAttemptsTests(TestCase):
@@ -118,3 +137,163 @@ class FlagDashboardTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.flag.refresh_from_db()
         self.assertFalse(self.flag.reviewed)
+
+
+class LectureModePromptTests(TestCase):
+    def test_lecture_is_a_known_mode_prompt(self):
+        self.assertIn('lecture', ai_client.MODE_PROMPTS)
+
+    @patch('workspaces.ai_client._get_client')
+    def test_get_ai_response_accepts_lecture_mode(self, mock_get_client):
+        mock_response = MagicMock(text='Here is a direct explanation.')
+        mock_get_client.return_value.models.generate_content.return_value = mock_response
+
+        reply = ai_client.get_ai_response(Workspace.Mode.LECTURE, [], 'What does mitosis mean?')
+
+        self.assertEqual(reply, 'Here is a direct explanation.')
+        # The system instruction actually sent should be the lecture prompt,
+        # not one of the other modes' — the whole point of MODE_PROMPTS.
+        _, kwargs = mock_get_client.return_value.models.generate_content.call_args
+        self.assertEqual(kwargs['config'].system_instruction, ai_client.MODE_PROMPTS['lecture'])
+
+
+class SummarizeLectureMaterialTests(TestCase):
+    def test_empty_material_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            ai_client.summarize_lecture_material('   ')
+
+    @patch('workspaces.ai_client._get_client')
+    def test_returns_outline_text(self, mock_get_client):
+        mock_get_client.return_value.models.generate_content.return_value = MagicMock(text='# Outline\n- point one')
+
+        outline = ai_client.summarize_lecture_material('Slide 1: intro\nSlide 2: details')
+
+        self.assertEqual(outline, '# Outline\n- point one')
+
+    @patch('workspaces.ai_client._get_client')
+    def test_empty_response_raises_ai_client_error(self, mock_get_client):
+        mock_get_client.return_value.models.generate_content.return_value = MagicMock(text=None)
+
+        with self.assertRaises(ai_client.AIClientError):
+            ai_client.summarize_lecture_material('some lecture content')
+
+
+class ExtractPptxTextTests(TestCase):
+    def test_extracts_text_from_each_slide(self):
+        content = _make_pptx_bytes(['Slide one title', 'Slide two content'])
+        text = extract_pptx_text(content)
+        self.assertIn('Slide one title', text)
+        self.assertIn('Slide two content', text)
+
+    def test_excludes_speaker_notes(self):
+        presentation = Presentation()
+        layout = presentation.slide_layouts[6]
+        slide = presentation.slides.add_slide(layout)
+        box = slide.shapes.add_textbox(0, 0, 100, 100)
+        box.text_frame.text = 'Visible slide text'
+        slide.notes_slide.notes_text_frame.text = 'Private teacher notes'
+        buffer = io.BytesIO()
+        presentation.save(buffer)
+
+        text = extract_pptx_text(buffer.getvalue())
+
+        self.assertIn('Visible slide text', text)
+        self.assertNotIn('Private teacher notes', text)
+
+
+class MaterialUploadFormPptxTests(TestCase):
+    def test_accepts_pptx(self):
+        content = _make_pptx_bytes(['Some content'])
+        upload = SimpleUploadedFile(
+            'deck.pptx', content,
+            content_type=MaterialUploadForm.PPTX_CONTENT_TYPE,
+        )
+        form = MaterialUploadForm(files={'file': upload})
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_rejects_other_extensions(self):
+        upload = SimpleUploadedFile('notes.txt', b'plain text', content_type='text/plain')
+        form = MaterialUploadForm(files={'file': upload})
+        self.assertFalse(form.is_valid())
+
+
+class GenerateLectureOutlineTests(TestCase):
+    def setUp(self):
+        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='LECTUR',
+        )
+        Material.objects.create(workspace=self.workspace, file='workspace_1/deck.pdf', extracted_text='Slide content here.')
+        self.client.login(username='teacher', password='pw')
+
+    @patch('workspaces.views.ai_client.summarize_lecture_material', return_value='# Outline\n- point one')
+    def test_generates_and_saves_outline(self, mock_summarize):
+        response = self.client.post(reverse('generate_lecture_outline', args=[self.workspace.pk]))
+        self.assertRedirects(response, reverse('workspace_detail', args=[self.workspace.pk]))
+        self.workspace.refresh_from_db()
+        self.assertEqual(self.workspace.lecture_outline, '# Outline\n- point one')
+        self.assertIsNotNone(self.workspace.lecture_outline_generated_at)
+
+    @patch('workspaces.views.ai_client.summarize_lecture_material', side_effect=ai_client.AIClientError('boom'))
+    def test_ai_failure_leaves_outline_unset(self, mock_summarize):
+        self.client.post(reverse('generate_lecture_outline', args=[self.workspace.pk]))
+        self.workspace.refresh_from_db()
+        self.assertEqual(self.workspace.lecture_outline, '')
+
+    def test_no_materials_short_circuits_without_calling_ai(self):
+        self.workspace.materials.all().delete()
+        with patch('workspaces.views.ai_client.summarize_lecture_material') as mock_summarize:
+            self.client.post(reverse('generate_lecture_outline', args=[self.workspace.pk]))
+            mock_summarize.assert_not_called()
+
+    def test_non_lecture_workspace_404s(self):
+        other_workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Socratic Class', mode=Workspace.Mode.SOCRATIC, join_code='SOCRAT',
+        )
+        response = self.client.post(reverse('generate_lecture_outline', args=[other_workspace.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_other_teacher_cannot_generate_outline(self):
+        get_user_model().objects.create_user(username='other', password='pw')
+        self.client.login(username='other', password='pw')
+        response = self.client.post(reverse('generate_lecture_outline', args=[self.workspace.pk]))
+        self.assertEqual(response.status_code, 404)
+
+
+class MaterialDeleteTests(TestCase):
+    def setUp(self):
+        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Test Class', mode=Workspace.Mode.SOCRATIC, join_code='ABCDEF',
+        )
+        self.material = Material.objects.create(
+            workspace=self.workspace, file='workspace_1/notes.pdf', extracted_text='Some notes.',
+        )
+        self.client.login(username='teacher', password='pw')
+
+    @patch('workspaces.views.storage.delete_material')
+    def test_deletes_material_and_storage_object(self, mock_delete):
+        response = self.client.post(reverse('material_delete', args=[self.workspace.pk, self.material.pk]))
+        self.assertRedirects(response, reverse('workspace_detail', args=[self.workspace.pk]))
+        mock_delete.assert_called_once_with('workspace_1/notes.pdf')
+        self.assertFalse(Material.objects.filter(pk=self.material.pk).exists())
+
+    @patch('workspaces.views.storage.delete_material', side_effect=storage.StorageError('unreachable'))
+    def test_storage_failure_still_deletes_row(self, mock_delete):
+        self.client.post(reverse('material_delete', args=[self.workspace.pk, self.material.pk]))
+        self.assertFalse(Material.objects.filter(pk=self.material.pk).exists())
+
+    def test_other_teacher_cannot_delete(self):
+        get_user_model().objects.create_user(username='other', password='pw')
+        self.client.login(username='other', password='pw')
+        response = self.client.post(reverse('material_delete', args=[self.workspace.pk, self.material.pk]))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Material.objects.filter(pk=self.material.pk).exists())
+
+    def test_material_from_other_workspace_404s(self):
+        other_workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Other Class', mode=Workspace.Mode.SOCRATIC, join_code='OTHERW',
+        )
+        response = self.client.post(reverse('material_delete', args=[other_workspace.pk, self.material.pk]))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Material.objects.filter(pk=self.material.pk).exists())

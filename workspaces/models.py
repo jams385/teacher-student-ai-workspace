@@ -8,6 +8,7 @@ class Workspace(models.Model):
     class Mode(models.TextChoices):
         SOCRATIC = 'socratic', 'Socratic Mode'
         HOMEWORK = 'homework', 'Homework Mode'
+        LECTURE = 'lecture', 'Lecture Mode'
 
     teacher = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -18,6 +19,14 @@ class Workspace(models.Model):
     mode = models.CharField(max_length=20, choices=Mode.choices)
     join_code = models.CharField(max_length=16, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Lecture Mode only: a whole-deck outline generated on teacher demand
+    # from all of the workspace's materials pooled together (same pooling
+    # send_message() already does for course_material_context) — a static
+    # snapshot shown to students for the session, not live-synced to
+    # whichever slide is currently on screen. generated_at doubles as the
+    # "has an outline been generated yet" flag.
+    lecture_outline = models.TextField(blank=True, default='')
+    lecture_outline_generated_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f'{self.name} ({self.get_mode_display()})'
