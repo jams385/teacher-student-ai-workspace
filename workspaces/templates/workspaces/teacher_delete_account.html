@@ -3,11 +3,27 @@
 {% block title %}Delete account{% endblock %}
 
 {% block content %}
-<h1>Delete account</h1>
-<p>This permanently deletes your account and all {{ workspace_count }} workspace{{ workspace_count|pluralize }} you own — including their materials and every student's transcript within them. This cannot be undone.</p>
-<form method="post">
+<div class="page-header">
+    <div>
+        <h1>Delete account</h1>
+        <p class="page-header__subtext">This permanently deletes your account and all {{ workspace_count }} workspace{{ workspace_count|pluralize }} you own — including their materials and every student's transcript within them. This cannot be undone.</p>
+    </div>
+</div>
+
+<form method="post" class="card">
     {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Permanently delete my account</button>
+    {% for error in form.non_field_errors %}
+        <p class="form-error">{{ error }}</p>
+    {% endfor %}
+    {% for field in form %}
+        <div class="form-field">
+            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<p class="form-help">{{ field.help_text }}</p>{% endif %}
+            {% for error in field.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+        </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-danger">Permanently delete my account</button>
 </form>
+<a href="{% url 'teacher_settings' %}" class="back-link">&larr; Back to settings</a>
 {% endblock %}

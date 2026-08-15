@@ -805,10 +805,14 @@ button, input, select, textarea {
   font-size: var(--font-size-sm);
 }
 
-/* Mode badge. Reuses the existing success/warning/info message-color trios
+/* Mode badge. Reuses the existing success/error/info message-color trios
    instead of inventing a fourth palette — none of these are semantically
-   "success" or "warning" here, just three already-vetted, already-distinct
-   hues borrowed to tell the three modes apart at a glance. */
+   "success" or "error" here, just three already-vetted, already-distinct
+   hues borrowed to tell the three modes apart at a glance. Mapping
+   (socratic=blue, homework=green, lecture=red) matches .mode-card's
+   tagline colors on the "New workspace" form — the two pages used to
+   disagree (this one had homework=amber, lecture=green) until this was
+   reconciled to a single scheme site-wide. */
 .badge {
   display: inline-flex;
   align-self: flex-start;
@@ -827,15 +831,15 @@ button, input, select, textarea {
 }
 
 .badge--homework {
-  background: var(--color-warning-bg);
-  border-color: var(--color-warning-border);
-  color: var(--color-warning-text);
-}
-
-.badge--lecture {
   background: var(--color-success-bg);
   border-color: var(--color-success-border);
   color: var(--color-success-text);
+}
+
+.badge--lecture {
+  background: var(--color-error-bg);
+  border-color: var(--color-error-border);
+  color: var(--color-error-text);
 }
 
 /* Join code row, pinned to the bottom of the card via margin-top:auto so
@@ -907,6 +911,231 @@ button, input, select, textarea {
 .empty-state p {
   max-width: 46ch;
   color: var(--color-accent-dark);
+}
+
+/* --------------------------------------------------------------------------
+   Visually-hidden utility
+   Standard "sr-only" recipe (as opposed to display:none, which would pull
+   the element out of the tab order and off screen readers entirely) — used
+   to hide the real <input type="radio"> elements the .mode-card cards below
+   are built on top of, without breaking keyboard/screen-reader access to
+   them. Generic enough to reuse anywhere else a real form control needs to
+   stay functional under custom visual markup.
+   -------------------------------------------------------------------------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Teacher "New workspace" form
+   Not from Figma — same status as the workspace list above (a working
+   Django form, not a marketing screen), redesigned from a reference mockup
+   the user provided rather than a Figma export. Reuses .workspace-page/
+   .workspace-page__blob and .page-header as-is (see the workspace list
+   section above) rather than duplicating that setup.
+   -------------------------------------------------------------------------- */
+.workspace-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* .form-field's own margin-bottom (see "Auth pages" above) is meant for
+   plain block-flow stacking; here .workspace-form's flex `gap` already
+   spaces the fields, so it's zeroed out here to avoid stacking both. */
+.workspace-form .form-field {
+  margin-bottom: 0;
+}
+
+.workspace-form__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mode-select {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-5);
+  margin-top: var(--space-4);
+}
+
+/* Card size/proportions: width 361px / height 297.18px from the reference
+   mockup (a single card's Figma bounding box, presumably in its usual
+   1440px-wide frame). Used as a *soft* target rather than pasted in as a
+   literal fixed size — max-width caps it at that width instead of locking
+   every card to it (so 3 columns don't force horizontal scroll on
+   narrower/tablet widths — .mode-select above already reflows via
+   auto-fit/minmax once cards can't fit 3-up), and aspect-ratio reproduces
+   its proportions without a hard-clipped height (a real Django-rendered
+   description can still grow the card taller if a mode's copy wraps
+   further than the reference did). */
+.mode-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 361px;
+  aspect-ratio: 361 / 297.18;
+  padding: var(--space-5);
+  border: 1px solid var(--color-accent-dark);
+  border-radius: var(--radius-card);
+  background: var(--color-white);
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.mode-card:hover {
+  border-color: var(--color-primary-light-border);
+}
+
+/* The actual <input type="radio"> is .sr-only (see above), wrapped inside
+   this label — :has() reaches "up" to the label from its hidden child's
+   :checked/:focus-visible state, which is what makes the whole card (not
+   just some inner checkbox) read as selected/focused. */
+.mode-card:has(input:checked) {
+  border-color: var(--color-primary-light-border);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-light) 25%, transparent);
+}
+
+.mode-card:has(input:focus-visible) {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-light) 40%, transparent);
+}
+
+/* The reference mockup's corner "notch" is a small circle overlapping each
+   card's top-right corner as if punched through the border. A literal
+   punch-through (mask/clip-path cutting a hole in the card itself) would be
+   a lot more fragile to keep aligned with the rounded corner underneath it
+   at arbitrary card sizes; a same-colored circle laid on top of the corner
+   reads the same at a glance and is far simpler — it's only a visible
+   difference from a true cutout when something other than plain page
+   background would show through, which never happens here.
+   border-color: inherit picks up .mode-card's own current border-color
+   (including its :hover/:has(:checked) states above) for free, so the
+   notch always matches the card's border without repeating each state. */
+.mode-card__notch {
+  position: absolute;
+  top: 0;
+  right: 18px;
+  width: 22px;
+  height: 22px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--color-white);
+  border: 1px solid var(--color-accent-dark);
+  border-color: inherit;
+}
+
+.mode-card__title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.mode-card__tagline {
+  font-weight: var(--font-weight-semibold);
+}
+
+.mode-card__desc {
+  margin: 0;
+  color: var(--color-accent-dark);
+}
+
+/* Tagline colors reuse the same message-color families .badge does on the
+   workspace list (see above) for the same reason (three already-vetted
+   hues, not a new palette) — but NOT the same mode→color mapping: this
+   page follows the reference mockup's own scheme (blue/green/red) rather
+   than the badge's (blue/amber/green). Both map Socratic to blue, so
+   they agree there; Homework and Lecture disagree between the two pages
+   — a real inconsistency, flagged rather than silently picking one, worth
+   a deliberate call before this reaches real students. */
+.mode-card--socratic .mode-card__tagline {
+  color: var(--color-info-text);
+}
+
+.mode-card--homework .mode-card__tagline {
+  color: var(--color-success-text);
+}
+
+.mode-card--lecture .mode-card__tagline {
+  color: var(--color-error-text);
+}
+
+/* --------------------------------------------------------------------------
+   Teacher account settings
+   Not from Figma — plain utility pages, deliberately kept quieter than the
+   workspace list/creation screens above (no .workspace-page blob art here;
+   this is account admin, not a screen meant to draw the eye). Reuses
+   .page-header/.card/.form-field/.btn as-is; only .settings-section,
+   .btn-danger, and .back-link below are new.
+   -------------------------------------------------------------------------- */
+.settings-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-card);
+  background: var(--color-white);
+}
+
+.settings-section + .settings-section {
+  margin-top: var(--space-4);
+}
+
+.settings-section__text h2 {
+  font-size: var(--font-size-md);
+}
+
+.settings-section__text p {
+  margin-top: var(--space-1);
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+  max-width: 60ch;
+}
+
+/* The one destructive action on this page — tinted with the same error
+   colors .messages li.error already uses, so "this one's different/
+   riskier" reads at a glance without needing extra copy. */
+.settings-section--danger {
+  border-color: var(--color-error-border);
+  background: var(--color-error-bg);
+}
+
+.btn-danger {
+  background: var(--color-error-text);
+  border-color: var(--color-error-text);
+  color: var(--color-white);
+}
+
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--color-error-text) 85%, black);
+}
+
+.btn-danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-text) 35%, transparent);
+}
+
+.back-link {
+  display: inline-block;
+  margin-top: var(--space-4);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent-dark);
+  text-decoration: none;
+}
+
+.back-link:hover {
+  text-decoration: underline;
 }
 
 /* --------------------------------------------------------------------------
@@ -1096,5 +1325,18 @@ button, input, select, textarea {
 
   .workspace-page__blob {
     display: none;
+  }
+
+  .workspace-form__actions .btn-primary {
+    width: 100%;
+  }
+
+  .settings-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-section .btn {
+    width: 100%;
   }
 }

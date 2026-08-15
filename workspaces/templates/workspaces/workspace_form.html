@@ -1,12 +1,61 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}New workspace{% endblock %}
 
 {% block content %}
-<h1>New workspace</h1>
-<form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Create workspace</button>
-</form>
+<div class="workspace-page">
+    <img class="workspace-page__blob workspace-page__blob--top" src="{% static 'workspaces/vendor/hero/hero-blob-small.svg' %}" alt="" aria-hidden="true">
+    <img class="workspace-page__blob workspace-page__blob--bottom" src="{% static 'workspaces/vendor/hero/hero-blob-large.svg' %}" alt="" aria-hidden="true">
+
+    <div class="page-header">
+        <div>
+            <h1>New workspace</h1>
+        </div>
+    </div>
+
+    <form method="post" class="workspace-form">
+        {% csrf_token %}
+        {% for error in form.non_field_errors %}
+            <p class="form-error">{{ error }}</p>
+        {% endfor %}
+
+        <div class="form-field">
+            <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}</label>
+            {{ form.name }}
+            <p class="form-help">A join code will be generated automatically once you continue.</p>
+            {% for error in form.name.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+        </div>
+
+        <div class="form-field">
+            <span class="form-label">{{ form.mode.label }}</span>
+            <p class="form-help">You can change this anytime from workspace settings.</p>
+            {% for error in form.mode.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+
+            <div class="mode-select">
+                {% for radio in form.mode %}
+                <label class="mode-card mode-card--{{ radio.data.value }}" for="{{ radio.id_for_label }}">
+                    {{ radio.tag }}
+                    <span class="mode-card__notch" aria-hidden="true"></span>
+                    <span class="mode-card__title">{{ radio.choice_label }}</span>
+                    {% if radio.data.value == 'socratic' %}
+                        <span class="mode-card__tagline">Best for discussion &amp; critical thinking</span>
+                        <p class="mode-card__desc">The AI answers a question with a question — it never gives the direct answer.</p>
+                    {% elif radio.data.value == 'homework' %}
+                        <span class="mode-card__tagline">Best for practice sets</span>
+                        <p class="mode-card__desc">The AI checks and nudges your work, but never states the final answer outright.</p>
+                    {% elif radio.data.value == 'lecture' %}
+                        <span class="mode-card__tagline">Best for guided lessons</span>
+                        <p class="mode-card__desc">The AI follows your slides live, offers a lesson summary, and answers student questions about the current topic.</p>
+                    {% endif %}
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="workspace-form__actions">
+            <button type="submit" class="btn btn-primary">Continue</button>
+        </div>
+    </form>
+</div>
 {% endblock %}

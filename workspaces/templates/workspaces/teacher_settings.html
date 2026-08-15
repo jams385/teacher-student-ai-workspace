@@ -3,13 +3,26 @@
 {% block title %}Account settings{% endblock %}
 
 {% block content %}
-<h1>Account settings</h1>
-<p>Signed in as {{ user.username }}</p>
+<div class="page-header">
+    <div>
+        <h1>Account settings</h1>
+        <p class="page-header__subtext">Signed in as {{ user.username }}</p>
+    </div>
+</div>
 
-<h2>Change password</h2>
-<p><a href="{% url 'teacher_change_password' %}">Change your password</a></p>
+<div class="settings-section">
+    <div class="settings-section__text">
+        <h2>Change password</h2>
+        <p>Update the password you use to log in.</p>
+    </div>
+    <a href="{% url 'teacher_change_password' %}" class="btn btn-secondary">Change password</a>
+</div>
 
-<h2>Delete account</h2>
-<p>Permanently deletes every workspace you own, including all materials and student transcripts. This cannot be undone.</p>
-<p><a href="{% url 'teacher_delete_account' %}">Delete account</a></p>
+<div class="settings-section settings-section--danger">
+    <div class="settings-section__text">
+        <h2>Delete account</h2>
+        <p>Permanently deletes every workspace you own, including all materials and student transcripts. This cannot be undone.</p>
+    </div>
+    <a href="{% url 'teacher_delete_account' %}" class="btn btn-danger">Delete account</a>
+</div>
 {% endblock %}

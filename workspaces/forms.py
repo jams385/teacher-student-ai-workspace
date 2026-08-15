@@ -5,15 +5,30 @@ from .models import Workspace
 
 
 class WorkspaceForm(forms.ModelForm):
+    # Declared explicitly (rather than left to ModelForm's auto-generated
+    # field) to pin the choice list to exactly Workspace.Mode.choices.
+    # Left to the default, Workspace.mode has no `default=`, so Django's
+    # ModelForm machinery injects an extra blank "---------" choice ahead
+    # of the three real ones (its blank-choice heuristic: include one
+    # unless the model field is required *and* has a default) — which
+    # rendered as a bogus, pre-selected 4th .mode-card in the template.
+    mode = forms.ChoiceField(
+        choices=Workspace.Mode.choices,
+        widget=forms.RadioSelect(attrs={'class': 'sr-only'}),
+        label='Behavior mode',
+    )
+
     class Meta:
         model = Workspace
         fields = ['name', 'mode']
         widgets = {
-            'mode': forms.RadioSelect,
+            # No .card wrapper on this page (see workspace_form.html) for the
+            # existing ".card input" selector to auto-match, so the class is
+            # applied directly here instead.
+            'name': forms.TextInput(attrs={'class': 'form-input', 'placeholder': 'e.g. AP Biology'}),
         }
         labels = {
             'name': 'Workspace name',
-            'mode': 'Behavior mode',
         }
 
 
