@@ -15,6 +15,7 @@ urlpatterns = [
     path('<int:pk>/present/prev/', views.presenter_prev, name='presenter_prev'),
     path('<int:pk>/dashboard/', views.workspace_dashboard, name='workspace_dashboard'),
     path('<int:pk>/dashboard/<int:session_pk>/', views.session_transcript, name='session_transcript'),
+    path('<int:pk>/dashboard/<int:session_pk>/remove/', views.student_remove, name='student_remove'),
     path('<int:pk>/dashboard/flags/<int:flag_pk>/reviewed/', views.flag_mark_reviewed, name='flag_mark_reviewed'),
     path('<int:pk>/roster/add/', views.roster_add, name='roster_add'),
     path('<int:pk>/roster/<int:invite_pk>/revoke/', views.roster_revoke, name='roster_revoke'),

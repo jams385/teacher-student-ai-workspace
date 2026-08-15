@@ -115,6 +115,18 @@ def rasterize_pdf(content: bytes, zoom: float = 2.0) -> list[bytes]:
     return [page.get_pixmap(matrix=matrix).tobytes('png') for page in doc]
 
 
+def _meaningful_words(text):
+    """Lowercase, strip punctuation, and yield the words in `text` that
+    aren't stopwords or one/two-letter filler — the shared word-extraction
+    rule behind both keyword_frequency (workspace-wide) and
+    has_meaningful_content (per-message, used to decide what counts toward
+    a student's message count on the teacher dashboard)."""
+    for word in _WORD_RE.findall(text.lower()):
+        word = word.strip("'")
+        if len(word) > 2 and word not in STOPWORDS:
+            yield word
+
+
 def keyword_frequency(text_items, top_n=20):
     """Simple word-frequency count over a batch of message text.
 
@@ -126,8 +138,13 @@ def keyword_frequency(text_items, top_n=20):
     """
     counts = Counter()
     for text in text_items:
-        for word in _WORD_RE.findall(text.lower()):
-            word = word.strip("'")
-            if len(word) > 2 and word not in STOPWORDS:
-                counts[word] += 1
+        counts.update(_meaningful_words(text))
     return counts.most_common(top_n)
+
+
+def has_meaningful_content(text):
+    """True if `text` has at least one word that isn't a stopword/too short
+    to be meaningful (same rule as keyword_frequency). Used on the teacher
+    dashboard so a message that's just "thanks" or "the" doesn't inflate a
+    student's message count."""
+    return next(_meaningful_words(text), None) is not None

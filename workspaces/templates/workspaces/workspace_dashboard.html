@@ -8,6 +8,7 @@
 <h1>{{ workspace.name }} — Dashboard</h1>
 
 <h2>Students</h2>
+<p><em>"Messages sent" excludes filler-only messages (e.g. just "thanks" or "ok") — it counts messages with at least one substantive word.</em></p>
 {% if student_sessions %}
 <table>
     <thead>
@@ -15,6 +16,7 @@
             <th>Student</th>
             <th>Messages sent</th>
             <th>Joined</th>
+            <th></th>
             <th></th>
         </tr>
     </thead>
@@ -25,6 +27,12 @@
             <td>{{ session.message_count }}</td>
             <td>{{ session.joined_at|date:"M j, Y g:i A" }}</td>
             <td><a href="{% url 'session_transcript' pk=workspace.pk session_pk=session.pk %}">View transcript</a></td>
+            <td>
+                <form method="post" action="{% url 'student_remove' pk=workspace.pk session_pk=session.pk %}" onsubmit="return confirm('Remove {{ session.display_name }} from this workspace? This deletes their transcript and cannot be undone.');">
+                    {% csrf_token %}
+                    <button type="submit">Remove</button>
+                </form>
+            </td>
         </tr>
     {% endfor %}
     </tbody>

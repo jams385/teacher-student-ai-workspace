@@ -1,10 +1,11 @@
+from collections import defaultdict
+
 from pypdf.errors import PyPdfError
 
 from django.contrib.auth import login
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Count, Q
 from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -19,7 +20,7 @@ from .forms import (
 from .models import Flag, Material, Message, Profile, RosterInvite, Slide, StudentSession, Workspace
 from .utils import (
     extract_pdf_text, extract_pptx_text, generate_unique_invite_code, generate_unique_join_code,
-    keyword_frequency, rasterize_pdf,
+    has_meaningful_content, keyword_frequency, rasterize_pdf,
 )
 
 
@@ -378,15 +379,29 @@ def workspace_dashboard(request, pk):
     firehose of every message."""
     workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
 
-    student_sessions = (
-        workspace.student_sessions
-        .annotate(message_count=Count('messages', filter=Q(messages__role=Message.Role.STUDENT)))
-        .order_by('-joined_at')
-    )
+    student_sessions = list(workspace.student_sessions.order_by('-joined_at'))
 
-    student_message_texts = Message.objects.filter(
+    # One query for every student message in the workspace, grouped by
+    # session — avoids an N+1 while still letting message_count apply
+    # has_meaningful_content per message below (a DB-level Count() can't
+    # do that filtering, since it's a Python-side word check, not a field
+    # lookup).
+    texts_by_session = defaultdict(list)
+    for student_session_id, content in Message.objects.filter(
         workspace=workspace, role=Message.Role.STUDENT
-    ).values_list('content', flat=True)
+    ).values_list('student_session_id', 'content'):
+        texts_by_session[student_session_id].append(content)
+
+    student_message_texts = [text for texts in texts_by_session.values() for text in texts]
+
+    for session in student_sessions:
+        # Messages sent excludes filler-only messages (e.g. just "thanks"
+        # or "the") so the count reflects substantive engagement, not
+        # every keystroke — same stopword rule as "Commonly asked words"
+        # below, via utils.has_meaningful_content.
+        session.message_count = sum(
+            1 for text in texts_by_session.get(session.id, []) if has_meaningful_content(text)
+        )
 
     flags = (
         Flag.objects.filter(message__workspace=workspace)
@@ -471,6 +486,26 @@ def session_transcript(request, pk, session_pk):
         # never see that a message was flagged (see _message.html).
         'show_flags': True,
     })
+
+
+@teacher_required
+@require_POST
+def student_remove(request, pk, session_pk):
+    """Teacher removes a student from the workspace entirely — deletes the
+    StudentSession row, which cascades to delete their Messages and any
+    Flags on those messages (both FKs are on_delete=CASCADE). A full,
+    permanent removal, not just cutting off further access: to come back,
+    the student would need a fresh join code or roster invite, and none of
+    their prior transcript survives. Works the same whether the session is
+    anonymous or account-linked — removing it here never touches the
+    student's account itself (only this workspace's membership row), so an
+    account-linked student's other joined workspaces are unaffected."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
+    student_session = get_object_or_404(StudentSession, pk=session_pk, workspace=workspace)
+    display_name = student_session.display_name
+    student_session.delete()
+    messages.success(request, f'Removed {display_name} from the workspace.')
+    return redirect('workspace_dashboard', pk=workspace.pk)
 
 
 def _is_student(user):

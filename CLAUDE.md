@@ -76,7 +76,7 @@ The keyword-flagging feature ("ignore previous instructions", "pretend you're no
 - [x] Lecture Mode: Live Slideshow — teacher presents a PDF's rasterized slides live (HTMX-polled), students view in-browser (no download) and may navigate backward but never ahead of the teacher's current slide, enforced server-side on every image request (see `views.slide_image`). PDF-only — see `docs/live-slideshow-risks.md`
 - [x] Student joins workspace via join code (lightweight session, no full account)
 - [x] Student chat interface (HTMX-driven, no full page reloads)
-- [x] Teacher dashboard: open student transcripts, message counts, commonly asked questions (simple keyword frequency for MVP — skip real clustering)
+- [x] Teacher dashboard: open student transcripts, message counts (excludes filler-only messages like "thanks"/"ok" — `utils.has_meaningful_content`, same stopword rule as the keyword frequency below), commonly asked questions (simple keyword frequency for MVP — skip real clustering), remove a student from the workspace (`views.student_remove` — deletes the `StudentSession` and cascades its `Message`/`Flag` rows; permanent, not a soft block)
 - [x] Keyword-based flagging of jailbreak attempts, surfaced to teacher dashboard (secondary to the architectural enforcement above)
 
 All MVP checklist items are done. `docs/` has draft consent/data-notice copy for teacher signup, workspace creation, and student join — not wired into the app yet, just planning content for whenever that's picked up.
