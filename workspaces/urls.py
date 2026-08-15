@@ -5,6 +5,9 @@ from . import views
 urlpatterns = [
     path('', views.workspace_list, name='workspace_list'),
     path('new/', views.workspace_create, name='workspace_create'),
+    path('settings/', views.teacher_settings, name='teacher_settings'),
+    path('settings/password/', views.teacher_change_password, name='teacher_change_password'),
+    path('settings/delete/', views.teacher_delete_account, name='teacher_delete_account'),
     path('<int:pk>/', views.workspace_detail, name='workspace_detail'),
     path('<int:pk>/lecture/outline/', views.generate_lecture_outline, name='generate_lecture_outline'),
     path('<int:pk>/materials/<int:material_pk>/delete/', views.material_delete, name='material_delete'),
@@ -24,6 +27,10 @@ urlpatterns = [
     path('student/login/', views.student_login, name='student_login'),
     path('student/signup/', views.student_signup, name='student_signup'),
     path('student/', views.student_home, name='student_home'),
+    path('student/settings/', views.student_settings, name='student_settings'),
+    path('student/settings/password/', views.student_change_password, name='student_change_password'),
+    path('student/settings/delete/', views.student_delete_account, name='student_delete_account'),
+    path('student/settings/<int:pk>/clear/', views.student_clear_data, name='student_clear_data'),
     path('student/<int:pk>/', views.student_workspace_transcript, name='student_workspace_transcript'),
     path('student/<int:pk>/continue/', views.student_workspace_continue, name='student_workspace_continue'),
 ]

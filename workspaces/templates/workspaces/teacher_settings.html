@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Account settings{% endblock %}
+
+{% block content %}
+<h1>Account settings</h1>
+<p>Signed in as {{ user.username }}</p>
+
+<h2>Change password</h2>
+<p><a href="{% url 'teacher_change_password' %}">Change your password</a></p>
+
+<h2>Delete account</h2>
+<p>Permanently deletes every workspace you own, including all materials and student transcripts. This cannot be undone.</p>
+<p><a href="{% url 'teacher_delete_account' %}">Delete account</a></p>
+{% endblock %}

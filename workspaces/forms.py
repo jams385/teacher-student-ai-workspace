@@ -49,6 +49,18 @@ class StudentSignupForm(UserCreationForm):
         fields = ('username',)
 
 
+class AccountDeletionConfirmForm(forms.Form):
+    """Role-agnostic: re-entering the current password is the confirmation
+    step for account deletion, a level of friction above the plain
+    JS confirm() every other destructive action in this app uses (e.g.
+    material_delete, student_remove) — deliberately higher, since deleting
+    an account is far harder to walk back. The view checks the password
+    against request.user via check_password(); this form only validates
+    that something was typed."""
+
+    password = forms.CharField(widget=forms.PasswordInput, label='Confirm your password')
+
+
 class MaterialUploadForm(forms.Form):
     MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20MB — the whole file is read into memory for text extraction + upload
 

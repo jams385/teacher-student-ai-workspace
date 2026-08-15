@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}Delete account{% endblock %}
+
+{% block content %}
+<h1>Delete account</h1>
+<p>This permanently deletes your account and all {{ workspace_count }} workspace{{ workspace_count|pluralize }} you own — including their materials and every student's transcript within them. This cannot be undone.</p>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Permanently delete my account</button>
+</form>
+{% endblock %}

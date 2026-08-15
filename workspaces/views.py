@@ -2,8 +2,8 @@ from collections import defaultdict
 
 from pypdf.errors import PyPdfError
 
-from django.contrib.auth import login
-from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth import login, logout, update_session_auth_hash
+from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, UserCreationForm
 from django.contrib import messages
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseForbidden
@@ -14,7 +14,9 @@ from django.views.decorators.http import require_POST
 
 from . import ai_client, moderation, storage
 from .decorators import student_required, teacher_required
-from .forms import MaterialUploadForm, StudentJoinForm, StudentSignupForm, WorkspaceForm
+from .forms import (
+    AccountDeletionConfirmForm, MaterialUploadForm, StudentJoinForm, StudentSignupForm, WorkspaceForm,
+)
 from .models import Flag, Material, Message, Profile, Slide, StudentSession, Workspace
 from .utils import (
     extract_pdf_text, extract_pptx_text, generate_unique_join_code, has_meaningful_content,
@@ -60,6 +62,80 @@ def workspace_create(request):
     else:
         form = WorkspaceForm()
     return render(request, 'workspaces/workspace_form.html', {'form': form})
+
+
+@teacher_required
+def teacher_settings(request):
+    return render(request, 'workspaces/teacher_settings.html')
+
+
+@teacher_required
+def teacher_change_password(request):
+    if request.method == 'POST':
+        form = PasswordChangeForm(user=request.user, data=request.POST)
+        if form.is_valid():
+            form.save()
+            # Keep the session valid — PasswordChangeForm.save() rotates the
+            # stored password hash, and without this Django's session-auth-hash
+            # check would invalidate the session on the very next request,
+            # silently logging the teacher out mid-flow.
+            update_session_auth_hash(request, form.user)
+            messages.success(request, 'Your password has been changed.')
+            return redirect('teacher_settings')
+    else:
+        form = PasswordChangeForm(user=request.user)
+    return render(request, 'workspaces/teacher_change_password.html', {'form': form})
+
+
+@teacher_required
+def teacher_delete_account(request):
+    """Permanently deletes the teacher's account and everything it owns.
+
+    Requires re-entering the current password as an extra confirmation step
+    above the plain JS confirm() every other destructive action in this app
+    uses (material_delete, student_remove) — this one is far harder to walk
+    back, since it cascades every workspace the teacher owns.
+
+    Deletes Supabase Storage objects (material files + slide images) first,
+    same tolerate-failure pattern as material_delete, since the DB cascade
+    triggered by user.delete() below never touches Storage (Material.file /
+    Slide.image are plain CharField paths, not Django FileFields).
+    """
+    if request.method == 'POST':
+        form = AccountDeletionConfirmForm(request.POST)
+        if form.is_valid() and request.user.check_password(form.cleaned_data['password']):
+            user = request.user
+            storage_failed = False
+            for workspace in user.workspaces.prefetch_related('materials__slides'):
+                for material in workspace.materials.all():
+                    for slide in material.slides.all():
+                        try:
+                            storage.delete_material(slide.image)
+                        except storage.StorageError:
+                            storage_failed = True
+                    try:
+                        storage.delete_material(material.file)
+                    except storage.StorageError:
+                        storage_failed = True
+
+            user.delete()  # cascades: Profile, Workspace -> Material -> Slide,
+                            # Workspace -> StudentSession -> Message -> Flag
+            # Flushes/rotates the session key so the browser can never again
+            # present a cookie resolving to anything related to this account.
+            logout(request)
+            if storage_failed:
+                messages.warning(request, "Your account was deleted, but some uploaded files couldn't be removed from storage.")
+            else:
+                messages.success(request, 'Your account and all its workspaces have been deleted.')
+            return redirect('login')
+        if not form.errors.get('password'):
+            form.add_error('password', 'Incorrect password.')
+    else:
+        form = AccountDeletionConfirmForm()
+    return render(request, 'workspaces/teacher_delete_account.html', {
+        'form': form,
+        'workspace_count': request.user.workspaces.count(),
+    })
 
 
 @teacher_required
@@ -724,6 +800,70 @@ def student_home(request):
     joined while authenticated, most recent first."""
     student_sessions = request.user.student_sessions.select_related('workspace').order_by('-joined_at')
     return render(request, 'workspaces/student_home.html', {'student_sessions': student_sessions})
+
+
+@student_required
+def student_settings(request):
+    """Account settings hub — change password, per-workspace "clear my data"
+    (lists every joined workspace so the student can pick one), and account
+    deletion."""
+    student_sessions = request.user.student_sessions.select_related('workspace').order_by('workspace__name')
+    return render(request, 'workspaces/student_settings.html', {'student_sessions': student_sessions})
+
+
+@student_required
+def student_change_password(request):
+    if request.method == 'POST':
+        form = PasswordChangeForm(user=request.user, data=request.POST)
+        if form.is_valid():
+            form.save()
+            # See teacher_change_password for why this call is required, not optional.
+            update_session_auth_hash(request, form.user)
+            messages.success(request, 'Your password has been changed.')
+            return redirect('student_settings')
+    else:
+        form = PasswordChangeForm(user=request.user)
+    return render(request, 'workspaces/student_change_password.html', {'form': form})
+
+
+@student_required
+@require_POST
+def student_clear_data(request, pk):
+    """Deletes the student's own chat history in one workspace (cascades any
+    Flags on those messages), but keeps the StudentSession row itself — the
+    workspace stays in "My Workspaces" with an empty transcript rather than
+    requiring the student to rejoin by code. Scoped by workspace_id=pk,
+    student=request.user (not the session pk) so a tampered URL can't touch
+    another student's row — same scoping student_workspace_transcript uses."""
+    student_session = get_object_or_404(StudentSession, workspace_id=pk, student=request.user)
+    student_session.messages.all().delete()
+    messages.success(request, f'Cleared your chat history in {student_session.workspace.name}.')
+    return redirect('student_settings')
+
+
+@student_required
+def student_delete_account(request):
+    """Permanently deletes the student's login. Deliberately does NOT delete
+    their chat history: StudentSession.student is on_delete=SET_NULL (see
+    the model's docstring) precisely so a deleted account leaves this row as
+    informative as an anonymous session already is — a teacher may have a
+    legitimate ongoing reason to still see it. A student who wants their
+    content gone too should use "Clear account data" first (student_clear_data).
+
+    Requires re-entering the password, same extra-friction reasoning as
+    teacher_delete_account."""
+    if request.method == 'POST':
+        form = AccountDeletionConfirmForm(request.POST)
+        if form.is_valid() and request.user.check_password(form.cleaned_data['password']):
+            request.user.delete()
+            logout(request)
+            messages.success(request, 'Your account has been deleted.')
+            return redirect('student_login')
+        if not form.errors.get('password'):
+            form.add_error('password', 'Incorrect password.')
+    else:
+        form = AccountDeletionConfirmForm()
+    return render(request, 'workspaces/student_delete_account.html', {'form': form})
 
 
 @student_required
