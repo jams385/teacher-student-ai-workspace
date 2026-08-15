@@ -1,0 +1,252 @@
+/* Gabay Mata — design tokens.
+   Plain CSS, no build step, no webfonts (project convention). This starts
+   the app's real token system; add to it rather than one-off values as
+   more pages get styled. */
+:root {
+    --color-bg-page: #f4f4f5;
+    --color-bg-surface: #ffffff;
+    --color-primary: #eba85c;
+    --color-primary-dark: #d99441;
+    --color-text-heading: #111111;
+    --color-text-body: #555555;
+    --color-text-muted: #5b7a99;
+    --color-blob-1: rgba(188, 217, 245, 0.75);
+    --color-blob-2: rgba(143, 184, 224, 0.75);
+    --radius-surface: 32px;
+    --radius-pill: 999px;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--color-bg-page);
+    color: var(--color-text-body);
+}
+
+/* ---- Landing page card ---- */
+
+.page--home {
+    max-width: 1200px;
+    margin: 24px auto;
+    background: var(--color-bg-surface);
+    border-radius: var(--radius-surface);
+    overflow: hidden;
+    position: relative;
+    min-height: calc(100vh - 48px);
+}
+
+/* ---- Landing nav ---- */
+
+.landing-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 40px;
+    position: relative;
+    z-index: 2;
+}
+
+.landing-nav__left,
+.landing-nav__right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.hamburger {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    width: 24px;
+    height: 24px;
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+.hamburger span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: var(--color-text-heading);
+    border-radius: 1px;
+}
+
+.brand-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    display: inline-block;
+}
+
+.wordmark {
+    font-weight: 700;
+    font-size: 1rem;
+    line-height: 1.15;
+    color: var(--color-text-heading);
+}
+
+.nav-link {
+    color: var(--color-text-heading);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.account-icon {
+    color: var(--color-text-heading);
+}
+
+/* ---- Pill buttons (nav "Sign up" + hero CTAs share this) ---- */
+
+.btn-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 28px;
+    border-radius: var(--radius-pill);
+    background: var(--color-primary);
+    color: #ffffff;
+    font-weight: 700;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.btn-pill:hover,
+.btn-pill:focus-visible {
+    background: var(--color-primary-dark);
+}
+
+.btn-pill--sm {
+    padding: 8px 20px;
+    font-size: 0.875rem;
+}
+
+/* ---- Hero ---- */
+
+.hero {
+    display: flex;
+    align-items: center;
+    gap: 40px;
+    padding: 40px 40px 80px;
+}
+
+.hero__copy {
+    flex: 1 1 480px;
+    max-width: 560px;
+    position: relative;
+    z-index: 2;
+}
+
+.hero__visual {
+    flex: 1 1 400px;
+    min-height: 360px;
+}
+
+.eyebrow {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-muted);
+    margin: 0 0 16px;
+}
+
+.headline {
+    font-size: 3rem;
+    line-height: 1.1;
+    font-weight: 800;
+    color: var(--color-text-heading);
+    margin: 0 0 20px;
+}
+
+.subtext {
+    font-size: 1.05rem;
+    line-height: 1.6;
+    color: var(--color-text-body);
+    margin: 0 0 32px;
+    max-width: 44ch;
+}
+
+.cta-row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+/* ---- Decorative blobs ----
+   Anchored to .page--home (nearest ancestor with position: relative),
+   not to .hero__visual, so offsets are measured against the card's
+   true edges regardless of DOM nesting depth. */
+
+.blob {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.blob--light {
+    width: 420px;
+    height: 420px;
+    top: -100px;
+    right: -80px;
+    background: var(--color-blob-1);
+}
+
+.blob--dark {
+    width: 300px;
+    height: 300px;
+    top: 260px;
+    right: 140px;
+    background: var(--color-blob-2);
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 640px) {
+    .page--home {
+        margin: 12px;
+        border-radius: 20px;
+        min-height: calc(100vh - 24px);
+    }
+
+    .landing-nav {
+        padding: 16px 20px;
+    }
+
+    /* Not enough width for the full link/pill/icon cluster — the hamburger
+       (inert for now, see home.html) stands in as the "more" affordance
+       until it's wired up to a real mobile menu in a later pass. */
+    .landing-nav__right .nav-link,
+    .landing-nav__right .btn-pill--sm {
+        display: none;
+    }
+
+    .hero {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 24px 20px 40px;
+        gap: 24px;
+    }
+
+    .headline {
+        font-size: 2rem;
+    }
+
+    .hero__visual {
+        display: none;
+    }
+
+    .cta-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}

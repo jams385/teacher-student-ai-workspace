@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Gabay Mata — AI tutoring, under the teacher's control{% endblock %}
+{% block page_class %}page--home{% endblock %}
+
+{% block nav %}
+<header class="landing-nav">
+    <div class="landing-nav__left">
+        <button class="hamburger" type="button" aria-label="Menu" disabled>
+            <span></span><span></span><span></span>
+        </button>
+        <span class="brand-icon" aria-hidden="true"></span>
+        <span class="wordmark">Gabay<br>Mata.</span>
+    </div>
+    <div class="landing-nav__right">
+        <a href="{% url 'home' %}" class="nav-link">Home</a>
+        <a href="{% url 'signup' %}" class="btn-pill btn-pill--sm">Sign up</a>
+        <svg class="account-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <circle cx="12" cy="8" r="4"></circle>
+            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"></path>
+        </svg>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero__copy">
+        <p class="eyebrow">AI tutoring, under the teacher's control</p>
+        <h1 class="headline">The guiding eye behind your learning AI</h1>
+        <p class="subtext">Gabay Mata is a learning workspace where teachers can curate their own AI for their students to use.</p>
+        <div class="cta-row">
+            <a href="{% url 'login' %}" class="btn-pill">I'm a teacher</a>
+            <a href="{% url 'student_login' %}" class="btn-pill">I'm a student</a>
+        </div>
+    </div>
+    <div class="hero__visual" aria-hidden="true">
+        <div class="blob blob--light"></div>
+        <div class="blob blob--dark"></div>
+    </div>
+</section>
+{% endblock %}
