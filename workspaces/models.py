@@ -6,7 +6,7 @@ from django.db.models import Q
 class Profile(models.Model):
     """Distinguishes a teacher account from a student account within the
     single shared auth.User table. Always set explicitly at account-creation
-    time (teacher_signup / student_signup_activate) — no default, since a
+    time (teacher_signup / student_signup) — no default, since a
     User with no Profile row (e.g. one made via createsuperuser) should
     fail closed rather than silently default into either role."""
 
@@ -101,44 +101,6 @@ class Slide(models.Model):
 
     def __str__(self):
         return f'Slide {self.index} of material {self.material_id}'
-
-
-class RosterInvite(models.Model):
-    """A teacher-issued, one-time code letting a named student create their
-    own account (see student_signup_activate) for a specific workspace.
-
-    Account creation is deliberately gated this way rather than open
-    self-signup — the teacher decides who gets an account, which is both a
-    stronger access control and a cleaner Philippines Data Privacy Act
-    consent story (processing flows from the school's existing relationship
-    with the student rather than an anonymous stranger registering).
-
-    `claimed_at` (not `student`) is the authoritative "has this code been
-    used" flag: `student` uses SET_NULL, so it can go back to null later
-    (e.g. a future account-deletion feature) without the code becoming
-    reusable again.
-    """
-
-    workspace = models.ForeignKey(
-        Workspace,
-        on_delete=models.CASCADE,
-        related_name='roster_invites',
-    )
-    display_name = models.CharField(max_length=100)
-    code = models.CharField(max_length=16, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    claimed_at = models.DateTimeField(null=True, blank=True)
-    student = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='claimed_roster_invites',
-    )
-
-    def __str__(self):
-        status = 'claimed' if self.claimed_at else 'pending'
-        return f'Invite for {self.display_name} in {self.workspace.name} ({status})'
 
 
 class StudentSession(models.Model):

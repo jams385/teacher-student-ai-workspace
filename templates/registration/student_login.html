@@ -9,6 +9,6 @@
     {{ form.as_p }}
     <button type="submit">Log in</button>
 </form>
-<p>Don't have an account? Ask your teacher for an activation code, then <a href="{% url 'student_signup_activate' %}">activate your account</a>.</p>
+<p>Don't have an account? <a href="{% url 'student_signup' %}">Sign up</a>.</p>
 <p>Just joining for one class, no account needed? <a href="{% url 'student_join' %}">Join with a code</a>.</p>
 {% endblock %}

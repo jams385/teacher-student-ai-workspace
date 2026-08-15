@@ -14,20 +14,16 @@ from django.views.decorators.http import require_POST
 
 from . import ai_client, moderation, storage
 from .decorators import student_required, teacher_required
-from .forms import (
-    MaterialUploadForm, RosterInviteForm, StudentActivationForm, StudentJoinForm, WorkspaceForm,
-)
-from .models import Flag, Material, Message, Profile, RosterInvite, Slide, StudentSession, Workspace
+from .forms import MaterialUploadForm, StudentJoinForm, StudentSignupForm, WorkspaceForm
+from .models import Flag, Material, Message, Profile, Slide, StudentSession, Workspace
 from .utils import (
-    extract_pdf_text, extract_pptx_text, generate_unique_invite_code, generate_unique_join_code,
-    has_meaningful_content, keyword_frequency, rasterize_pdf,
+    extract_pdf_text, extract_pptx_text, generate_unique_join_code, has_meaningful_content,
+    keyword_frequency, rasterize_pdf,
 )
 
 
 def teacher_signup(request):
-    """Self-serve account creation for teachers. Students don't get open
-    self-signup — a teacher issues each student a one-time roster invite
-    code instead (see roster_add / student_signup_activate)."""
+    """Self-serve account creation for teachers."""
     if request.method == 'POST':
         form = UserCreationForm(request.POST)
         if form.is_valid():
@@ -414,44 +410,7 @@ def workspace_dashboard(request, pk):
         'student_sessions': student_sessions,
         'keywords': keyword_frequency(student_message_texts),
         'flags': flags,
-        'roster_invites': workspace.roster_invites.select_related('student').order_by('-created_at'),
-        'roster_form': RosterInviteForm(),
     })
-
-
-@teacher_required
-@require_POST
-def roster_add(request, pk):
-    """Teacher adds one named student to this workspace's roster, issuing a
-    one-time activation code the student redeems at student_signup_activate
-    to create their own account. Account creation is gated this way rather
-    than open self-signup — the teacher decides who gets one."""
-    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
-    form = RosterInviteForm(request.POST)
-    if form.is_valid():
-        invite = RosterInvite.objects.create(
-            workspace=workspace,
-            display_name=form.cleaned_data['display_name'],
-            code=generate_unique_invite_code(),
-        )
-        messages.success(request, f'Activation code for "{invite.display_name}": {invite.code}')
-    else:
-        messages.error(request, "Couldn't add that student — enter a name.")
-    return redirect('workspace_dashboard', pk=workspace.pk)
-
-
-@teacher_required
-@require_POST
-def roster_revoke(request, pk, invite_pk):
-    """Teacher cancels a not-yet-claimed roster invite. Only unclaimed
-    invites are revocable — once a student has activated an account with a
-    code, revoking it wouldn't undo the account, so the button simply isn't
-    offered for claimed rows (see workspace_dashboard.html)."""
-    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
-    invite = get_object_or_404(RosterInvite, pk=invite_pk, workspace=workspace, claimed_at__isnull=True)
-    invite.delete()
-    messages.success(request, f'Revoked the activation code for "{invite.display_name}".')
-    return redirect('workspace_dashboard', pk=workspace.pk)
 
 
 @teacher_required
@@ -495,11 +454,11 @@ def student_remove(request, pk, session_pk):
     StudentSession row, which cascades to delete their Messages and any
     Flags on those messages (both FKs are on_delete=CASCADE). A full,
     permanent removal, not just cutting off further access: to come back,
-    the student would need a fresh join code or roster invite, and none of
-    their prior transcript survives. Works the same whether the session is
-    anonymous or account-linked — removing it here never touches the
-    student's account itself (only this workspace's membership row), so an
-    account-linked student's other joined workspaces are unaffected."""
+    the student would need the join code again, and none of their prior
+    transcript survives. Works the same whether the session is anonymous or
+    account-linked — removing it here never touches the student's account
+    itself (only this workspace's membership row), so an account-linked
+    student's other joined workspaces are unaffected."""
     workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
     student_session = get_object_or_404(StudentSession, pk=session_pk, workspace=workspace)
     display_name = student_session.display_name
@@ -704,8 +663,10 @@ def send_message(request):
 # Everything above this point is the original, fully anonymous join-by-code
 # flow and stays exactly as-is. What follows is an additive second path: a
 # student who wants their joined workspaces + chat history to persist across
-# devices/logins can hold a real account. Account creation is gated by a
-# teacher-issued RosterInvite (see roster_add above), not open self-signup.
+# devices/logins can hold a real account — self-serve signup, no teacher
+# gating. An account changes nothing about how joining a workspace works
+# (still the same join-code + display-name flow, see student_join above);
+# it only adds a persistent "My Workspaces" list (student_home below).
 
 
 def student_login(request):
@@ -731,33 +692,30 @@ def student_login(request):
     return render(request, 'registration/student_login.html', {'form': form})
 
 
-def student_signup_activate(request):
-    """A student redeems a teacher-issued RosterInvite code to create their
-    own account, then is auto-joined to the invite's workspace."""
+def student_signup(request):
+    """Self-serve account creation for students — no teacher gating. Just
+    creates the account and logs them in; it doesn't join any workspace on
+    its own (there's no roster/invite to auto-join from anymore) — the
+    student still uses the normal join-code flow (student_join) afterward,
+    same as everyone else."""
     if request.user.is_authenticated:
-        messages.error(request, "You're already logged in — log out first to activate a new student account.")
+        messages.error(request, "You're already logged in — log out first to create a new student account.")
         return redirect('student_home' if _is_student(request.user) else 'workspace_list')
 
     if request.method == 'POST':
-        form = StudentActivationForm(request.POST)
+        form = StudentSignupForm(request.POST)
         if form.is_valid():
-            invite = form.invite
             user = form.save()
             Profile.objects.create(user=user, role=Profile.Role.STUDENT)
             if form.cleaned_data.get('email'):
                 user.email = form.cleaned_data['email']
                 user.save(update_fields=['email'])
-            invite.claimed_at = timezone.now()
-            invite.student = user
-            invite.save(update_fields=['claimed_at', 'student'])
-
             login(request, user)
-            _join_workspace_as_student(request, invite.workspace, invite.display_name)
-            messages.success(request, f'Welcome, {invite.display_name}! Your account is ready.')
+            messages.success(request, 'Welcome! Join a workspace with a code to get started.')
             return redirect('student_home')
     else:
-        form = StudentActivationForm()
-    return render(request, 'workspaces/roster_activate.html', {'form': form})
+        form = StudentSignupForm()
+    return render(request, 'workspaces/student_signup.html', {'form': form})
 
 
 @student_required

@@ -216,6 +216,48 @@ class DashboardMessageCountAndRemoveTests(TestCase):
         self.assertTrue(StudentSession.objects.filter(pk=self.student_session.pk).exists())
 
 
+class StudentSignupTests(TestCase):
+    """Self-serve student signup — no teacher gating, no code. An account's
+    only purpose is a persistent "My Workspaces" list; joining a workspace
+    is still the same join-code flow (see student_join)."""
+
+    def test_signup_creates_student_account_and_logs_in(self):
+        response = self.client.post(reverse('student_signup'), {
+            'username': 'jamie', 'password1': 'Abcdef123', 'password2': 'Abcdef123', 'email': '',
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        user = get_user_model().objects.get(username='jamie')
+        self.assertEqual(user.profile.role, Profile.Role.STUDENT)
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+    def test_signup_form_has_no_code_field(self):
+        response = self.client.get(reverse('student_signup'))
+        self.assertNotContains(response, 'name="code"')
+
+    def test_already_logged_in_student_cannot_signup_again(self):
+        self.client.post(reverse('student_signup'), {
+            'username': 'jamie', 'password1': 'Abcdef123', 'password2': 'Abcdef123', 'email': '',
+        })
+        response = self.client.post(reverse('student_signup'), {
+            'username': 'someone_else', 'password1': 'Abcdef123', 'password2': 'Abcdef123', 'email': '',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(get_user_model().objects.filter(username='someone_else').exists())
+
+    def test_join_after_signup_populates_my_workspaces(self):
+        teacher = _create_teacher('teacher')
+        workspace = Workspace.objects.create(
+            teacher=teacher, name='Test Class', mode=Workspace.Mode.HOMEWORK, join_code='ABCDEF',
+        )
+        self.client.post(reverse('student_signup'), {
+            'username': 'jamie', 'password1': 'Abcdef123', 'password2': 'Abcdef123', 'email': '',
+        })
+        self.client.post(reverse('student_join'), {'join_code': 'ABCDEF', 'display_name': 'Jamie'})
+
+        response = self.client.get(reverse('student_home'))
+        self.assertContains(response, 'Test Class')
+
+
 class LectureModePromptTests(TestCase):
     def test_lecture_is_a_known_mode_prompt(self):
         self.assertIn('lecture', ai_client.MODE_PROMPTS)
