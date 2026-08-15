@@ -1,33 +1,55 @@
 {% if workspace.live_material_id %}
-    <p class="text-muted">Presenting: {{ workspace.live_material.file }} &middot; Slide {{ workspace.live_slide_index|add:1 }} of {{ slide_count }}</p>
+    <p>Presenting: {{ workspace.live_material.file }}</p>
+    <p>Slide {{ workspace.live_slide_index|add:1 }} of {{ slide_count }}</p>
     <img
         src="{% url 'slide_image' pk=workspace.pk material_pk=workspace.live_material_id index=workspace.live_slide_index %}"
         alt="Current slide"
+        style="max-width: 100%;"
     >
     <div>
-        <form class="inline-form" hx-post="{% url 'presenter_prev' pk=workspace.pk %}" hx-target="#presenter" hx-swap="innerHTML">
+        <form
+            hx-post="{% url 'presenter_prev' pk=workspace.pk %}"
+            hx-target="#presenter"
+            hx-swap="innerHTML"
+            style="display: inline;"
+        >
             {% csrf_token %}
-            <button type="submit" class="btn-secondary" {% if workspace.live_slide_index == 0 %}disabled{% endif %}>&larr; Prev</button>
+            <button type="submit" {% if workspace.live_slide_index == 0 %}disabled{% endif %}>&larr; Prev</button>
         </form>
-        <form class="inline-form" hx-post="{% url 'presenter_next' pk=workspace.pk %}" hx-target="#presenter" hx-swap="innerHTML">
+        <form
+            hx-post="{% url 'presenter_next' pk=workspace.pk %}"
+            hx-target="#presenter"
+            hx-swap="innerHTML"
+            style="display: inline;"
+        >
             {% csrf_token %}
-            <button type="submit" class="btn-secondary" {% if workspace.live_slide_index|add:1 >= slide_count %}disabled{% endif %}>Next &rarr;</button>
+            <button type="submit" {% if workspace.live_slide_index|add:1 >= slide_count %}disabled{% endif %}>Next &rarr;</button>
         </form>
-        <form class="inline-form" hx-post="{% url 'stop_presenting' pk=workspace.pk %}" hx-target="#presenter" hx-swap="innerHTML">
+        <form
+            hx-post="{% url 'stop_presenting' pk=workspace.pk %}"
+            hx-target="#presenter"
+            hx-swap="innerHTML"
+            style="display: inline;"
+        >
             {% csrf_token %}
-            <button type="submit" class="btn-danger">Stop presenting</button>
+            <button type="submit">Stop presenting</button>
         </form>
     </div>
 {% else %}
     {% if materials_with_slides %}
-        <p class="text-muted">Choose a material to present live to your students:</p>
+        <p>Choose a material to present live to your students:</p>
         <ul>
         {% for material in materials_with_slides %}
             <li>
                 {{ material.file }}
-                <form class="inline-form" hx-post="{% url 'present_material' pk=workspace.pk material_pk=material.pk %}" hx-target="#presenter" hx-swap="innerHTML">
+                <form
+                    hx-post="{% url 'present_material' pk=workspace.pk material_pk=material.pk %}"
+                    hx-target="#presenter"
+                    hx-swap="innerHTML"
+                    style="display: inline;"
+                >
                     {% csrf_token %}
-                    <button type="submit" class="btn-secondary">Present</button>
+                    <button type="submit">Present</button>
                 </form>
             </li>
         {% endfor %}

@@ -3,13 +3,9 @@
 {% block title %}My workspaces{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>My workspaces</h1>
-    <a class="btn" href="{% url 'student_join' %}">+ Join a workspace</a>
-</div>
+<h1>My workspaces</h1>
 
 {% if student_sessions %}
-<div class="card table-scroll">
 <table>
     <thead>
         <tr>
@@ -30,8 +26,7 @@
     {% endfor %}
     </tbody>
 </table>
-</div>
 {% else %}
-<p class="text-muted">You haven't joined any workspaces yet with this account. Got a join code? <a href="{% url 'student_join' %}">Join a workspace</a>.</p>
+<p>You haven't joined any workspaces yet with this account. Got a join code? <a href="{% url 'student_join' %}">Join a workspace</a>.</p>
 {% endif %}
 {% endblock %}

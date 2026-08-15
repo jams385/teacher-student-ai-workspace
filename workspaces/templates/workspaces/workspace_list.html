@@ -3,13 +3,10 @@
 {% block title %}Your workspaces{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>Your workspaces</h1>
-    <a class="btn" href="{% url 'workspace_create' %}">+ New workspace</a>
-</div>
+<h1>Your workspaces</h1>
+<p><a href="{% url 'workspace_create' %}">+ New workspace</a></p>
 
 {% if workspaces %}
-<div class="card table-scroll">
 <table>
     <thead>
         <tr>
@@ -30,8 +27,7 @@
     {% endfor %}
     </tbody>
 </table>
-</div>
 {% else %}
-<p class="text-muted">You haven't created any workspaces yet.</p>
+<p>You haven't created any workspaces yet.</p>
 {% endif %}
 {% endblock %}

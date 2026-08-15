@@ -3,15 +3,13 @@
 {% block title %}{{ workspace.name }} — Dashboard{% endblock %}
 
 {% block content %}
-<p><a class="back-link" href="{% url 'workspace_detail' pk=workspace.pk %}">&larr; {{ workspace.name }}</a></p>
+<p><a href="{% url 'workspace_detail' pk=workspace.pk %}">&larr; {{ workspace.name }}</a></p>
 
 <h1>{{ workspace.name }} — Dashboard</h1>
 
-<div class="card">
-<h2 style="margin-top: 0;">Students</h2>
+<h2>Students</h2>
 <p><em>"Messages sent" excludes filler-only messages (e.g. just "thanks" or "ok") — it counts messages with at least one substantive word.</em></p>
 {% if student_sessions %}
-<div class="table-scroll">
 <table>
     <thead>
         <tr>
@@ -30,23 +28,20 @@
             <td>{{ session.joined_at|date:"M j, Y g:i A" }}</td>
             <td><a href="{% url 'session_transcript' pk=workspace.pk session_pk=session.pk %}">View transcript</a></td>
             <td>
-                <form class="inline-form" method="post" action="{% url 'student_remove' pk=workspace.pk session_pk=session.pk %}" onsubmit="return confirm('Remove {{ session.display_name }} from this workspace? This deletes their transcript and cannot be undone.');">
+                <form method="post" action="{% url 'student_remove' pk=workspace.pk session_pk=session.pk %}" onsubmit="return confirm('Remove {{ session.display_name }} from this workspace? This deletes their transcript and cannot be undone.');">
                     {% csrf_token %}
-                    <button type="submit" class="btn-danger">Remove</button>
+                    <button type="submit">Remove</button>
                 </form>
             </td>
         </tr>
     {% endfor %}
     </tbody>
 </table>
-</div>
 {% else %}
-<p class="text-muted">No students have joined this workspace yet.</p>
+<p>No students have joined this workspace yet.</p>
 {% endif %}
-</div>
 
-<div class="card">
-<h2 style="margin-top: 0;">Student accounts</h2>
+<h2>Student accounts</h2>
 <p><em>Add a student to issue them a one-time activation code for a persistent account (their joined workspaces + transcripts survive across devices/logins). Optional — students can also keep using a join code with no account at all.</em></p>
 <form method="post" action="{% url 'roster_add' pk=workspace.pk %}">
     {% csrf_token %}
@@ -54,7 +49,6 @@
     <button type="submit">Add student</button>
 </form>
 {% if roster_invites %}
-<div class="table-scroll">
 <table>
     <thead>
         <tr>
@@ -76,9 +70,9 @@
             <td>Pending</td>
             <td><code>{{ invite.code }}</code></td>
             <td>
-                <form class="inline-form" method="post" action="{% url 'roster_revoke' pk=workspace.pk invite_pk=invite.pk %}">
+                <form method="post" action="{% url 'roster_revoke' pk=workspace.pk invite_pk=invite.pk %}">
                     {% csrf_token %}
-                    <button type="submit" class="btn-danger">Revoke</button>
+                    <button type="submit">Revoke</button>
                 </form>
             </td>
             {% endif %}
@@ -86,12 +80,9 @@
     {% endfor %}
     </tbody>
 </table>
-</div>
 {% endif %}
-</div>
 
-<div class="card">
-<h2 style="margin-top: 0;">Commonly asked words</h2>
+<h2>Commonly asked words</h2>
 {% if keywords %}
 <ol>
     {% for word, count in keywords %}
@@ -99,15 +90,12 @@
     {% endfor %}
 </ol>
 {% else %}
-<p class="text-muted">Not enough student messages yet to show common words.</p>
+<p>Not enough student messages yet to show common words.</p>
 {% endif %}
-</div>
 
-<div class="card">
-<h2 style="margin-top: 0;">Flagged messages</h2>
+<h2>Flagged messages</h2>
 <p><em>Messages auto-flagged for phrasing that resembles a jailbreak attempt (e.g. "ignore your instructions"). This is a detection signal for review, not proof the AI complied — it structurally can't, regardless of phrasing.</em></p>
 {% if flags %}
-<div class="table-scroll">
 <table>
     <thead>
         <tr>
@@ -125,9 +113,7 @@
     {% endfor %}
     </tbody>
 </table>
-</div>
 {% else %}
-<p class="text-muted">No flagged messages.</p>
+<p>No flagged messages.</p>
 {% endif %}
-</div>
 {% endblock %}

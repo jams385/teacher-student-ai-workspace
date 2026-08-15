@@ -3,15 +3,11 @@
 {% block title %}Join a workspace{% endblock %}
 
 {% block content %}
-<div class="container-narrow">
 <h1>Join a workspace</h1>
-<p class="text-muted">Enter the join code your teacher gave you.</p>
-<div class="card">
+<p>Enter the join code your teacher gave you.</p>
 <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
     <button type="submit">Join</button>
 </form>
-</div>
-</div>
 {% endblock %}
