@@ -1,0 +1,24 @@
+<!-- Shared by base.html's default nav block and _public_nav.html (when a
+     logged-in user lands on one of the pre-login pages, e.g. a student
+     visiting /join/ to join a second workspace) so the two never drift
+     apart. Assumes the caller has already checked user.is_authenticated. -->
+<div class="site-nav__links">
+    {% if user.profile.role == 'student' %}
+        <a href="{% url 'student_home' %}">My workspaces</a>
+        <a href="{% url 'student_join' %}">Join a workspace</a>
+        <a href="{% url 'student_settings' %}">Settings</a>
+    {% else %}
+        <a href="{% url 'workspace_list' %}">Workspaces</a>
+        <a href="{% url 'teacher_settings' %}">Settings</a>
+    {% endif %}
+</div>
+<div class="site-nav__user">
+    <span class="site-nav__username">{{ user.username }}</span>
+    <form method="post" action="{% url 'logout' %}" class="site-nav__logout">
+        {% csrf_token %}
+        {% if user.profile.role == 'student' %}
+            <input type="hidden" name="next" value="{% url 'student_login' %}">
+        {% endif %}
+        <button type="submit" class="btn btn-secondary btn-sm">Log out</button>
+    </form>
+</div>

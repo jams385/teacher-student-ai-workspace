@@ -12,34 +12,17 @@
     <header class="site-header">
         <nav class="site-nav">
             {% block nav %}
-            <div class="site-nav__links">
-                {% if user.is_authenticated and user.profile.role == 'student' %}
-                    <a href="{% url 'student_home' %}">My workspaces</a>
-                    <a href="{% url 'student_join' %}">Join a workspace</a>
-                    <a href="{% url 'student_settings' %}">Settings</a>
-                {% elif user.is_authenticated %}
-                    <a href="{% url 'workspace_list' %}">Workspaces</a>
-                    <a href="{% url 'teacher_settings' %}">Settings</a>
-                {% else %}
-                    <a href="{% url 'workspace_list' %}">Workspaces</a>
-                    <a href="{% url 'student_join' %}">Join a workspace</a>
-                    <a href="{% url 'student_login' %}">Student log in</a>
-                    <a href="{% url 'student_signup' %}">Student sign up</a>
-                    <a href="{% url 'login' %}">Teacher log in</a>
-                    <a href="{% url 'signup' %}">Teacher sign up</a>
-                {% endif %}
-            </div>
             {% if user.is_authenticated %}
-                <div class="site-nav__user">
-                    <span class="site-nav__username">{{ user.username }}</span>
-                    <form method="post" action="{% url 'logout' %}" class="site-nav__logout">
-                        {% csrf_token %}
-                        {% if user.profile.role == 'student' %}
-                            <input type="hidden" name="next" value="{% url 'student_login' %}">
-                        {% endif %}
-                        <button type="submit" class="btn btn-secondary btn-sm">Log out</button>
-                    </form>
-                </div>
+                {% include 'workspaces/partials/_authenticated_nav.html' %}
+            {% else %}
+            <div class="site-nav__links">
+                <a href="{% url 'workspace_list' %}">Workspaces</a>
+                <a href="{% url 'student_join' %}">Join a workspace</a>
+                <a href="{% url 'student_login' %}">Student log in</a>
+                <a href="{% url 'student_signup' %}">Student sign up</a>
+                <a href="{% url 'login' %}">Teacher log in</a>
+                <a href="{% url 'signup' %}">Teacher sign up</a>
+            </div>
             {% endif %}
             {% endblock %}
         </nav>

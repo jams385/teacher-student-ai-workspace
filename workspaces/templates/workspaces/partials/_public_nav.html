@@ -2,6 +2,15 @@
 <a href="{% url 'home' %}" class="site-nav__logo">
     <img src="{% static 'workspaces/vendor/logo/gabay-mata-logo.png' %}" alt="Gabay Mata">
 </a>
+{% if user.is_authenticated %}
+    {% comment %}
+    A logged-in visitor landing here isn't hypothetical: student_join has
+    no auth-redirect guard, since a logged-in student re-joining a second
+    workspace is a normal, supported flow — so this partial has to handle
+    "already signed in" for real, not just as an edge case.
+    {% endcomment %}
+    {% include 'workspaces/partials/_authenticated_nav.html' %}
+{% else %}
 <div class="site-nav__links">
     <a href="{% url 'student_join' %}">Join a workspace</a>
     <a href="{% url 'login' %}">Teacher log in</a>
@@ -9,3 +18,4 @@
     <a href="{% url 'signup' %}">Teacher sign up</a>
     <a href="{% url 'student_signup' %}">Student sign up</a>
 </div>
+{% endif %}
