@@ -33,6 +33,47 @@
 <p>No students have joined this workspace yet.</p>
 {% endif %}
 
+<h2>Student accounts</h2>
+<p><em>Add a student to issue them a one-time activation code for a persistent account (their joined workspaces + transcripts survive across devices/logins). Optional — students can also keep using a join code with no account at all.</em></p>
+<form method="post" action="{% url 'roster_add' pk=workspace.pk %}">
+    {% csrf_token %}
+    {{ roster_form.as_p }}
+    <button type="submit">Add student</button>
+</form>
+{% if roster_invites %}
+<table>
+    <thead>
+        <tr>
+            <th>Student</th>
+            <th>Status</th>
+            <th>Code</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for invite in roster_invites %}
+        <tr>
+            <td>{{ invite.display_name }}</td>
+            {% if invite.claimed_at %}
+            <td>Activated {{ invite.claimed_at|date:"M j, Y" }}</td>
+            <td>&mdash;</td>
+            <td></td>
+            {% else %}
+            <td>Pending</td>
+            <td><code>{{ invite.code }}</code></td>
+            <td>
+                <form method="post" action="{% url 'roster_revoke' pk=workspace.pk invite_pk=invite.pk %}">
+                    {% csrf_token %}
+                    <button type="submit">Revoke</button>
+                </form>
+            </td>
+            {% endif %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
 <h2>Commonly asked words</h2>
 {% if keywords %}
 <ol>

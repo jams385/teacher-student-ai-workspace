@@ -7,7 +7,7 @@ import pymupdf as fitz  # `import fitz` is a deprecated alias as of pymupdf 1.28
 from pptx import Presentation
 from pypdf import PdfReader
 
-from .models import Workspace
+from .models import RosterInvite, Workspace
 
 # Common English function words + a few chat-filler words, so the dashboard's
 # "commonly asked words" view surfaces actual topics instead of "what", "is",
@@ -36,12 +36,25 @@ JOIN_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
 JOIN_CODE_LENGTH = 6
 
 
+def _generate_unique_code(model, field, length=JOIN_CODE_LENGTH, alphabet=JOIN_CODE_ALPHABET):
+    """Return a random code guaranteed not to collide with an existing
+    `model.field` value. Shared by Workspace.join_code and
+    RosterInvite.code — same alphabet/length, same collision-check shape."""
+    while True:
+        code = ''.join(random.choices(alphabet, k=length))
+        if not model.objects.filter(**{field: code}).exists():
+            return code
+
+
 def generate_unique_join_code():
     """Return a join code guaranteed not to collide with an existing Workspace."""
-    while True:
-        code = ''.join(random.choices(JOIN_CODE_ALPHABET, k=JOIN_CODE_LENGTH))
-        if not Workspace.objects.filter(join_code=code).exists():
-            return code
+    return _generate_unique_code(Workspace, 'join_code')
+
+
+def generate_unique_invite_code():
+    """Return a roster invite activation code guaranteed not to collide with
+    an existing RosterInvite."""
+    return _generate_unique_code(RosterInvite, 'code')
 
 
 def extract_pdf_text(content: bytes) -> str:

@@ -1,6 +1,7 @@
 from django import forms
+from django.contrib.auth.forms import UserCreationForm
 
-from .models import Workspace
+from .models import RosterInvite, Workspace
 
 
 class WorkspaceForm(forms.ModelForm):
@@ -29,6 +30,41 @@ class StudentJoinForm(forms.Form):
         except Workspace.DoesNotExist:
             raise forms.ValidationError(
                 "We couldn't find a workspace with that join code. Double-check it and try again."
+            )
+        return code
+
+
+class RosterInviteForm(forms.Form):
+    """Teacher adds one named student to a workspace's roster — see
+    views.roster_add. Just a display name; the activation code is generated
+    server-side (utils.generate_unique_invite_code)."""
+    display_name = forms.CharField(max_length=100, label="Student's name")
+
+
+class StudentActivationForm(UserCreationForm):
+    """A student redeems a teacher-issued RosterInvite code to create their
+    own account — see views.student_signup_activate. Deliberately just
+    username + password (reusing UserCreationForm's fields and the same
+    password validators teacher signup uses) plus one optional email; no
+    display-name field here, since the teacher's roster naming stays
+    authoritative (shown read-only on the activation page, not re-entered)."""
+
+    code = forms.CharField(max_length=16, label='Activation code')
+    email = forms.EmailField(required=False, label='Email (optional)')
+
+    class Meta(UserCreationForm.Meta):
+        fields = ('username',)
+
+    def clean_code(self):
+        code = self.cleaned_data['code'].strip().upper()
+        try:
+            # Stashed on the form so the view doesn't have to look it up
+            # again after validation — same pattern as
+            # StudentJoinForm.clean_join_code.
+            self.invite = RosterInvite.objects.select_related('workspace').get(code=code, claimed_at__isnull=True)
+        except RosterInvite.DoesNotExist:
+            raise forms.ValidationError(
+                "That activation code isn't valid or has already been used. Ask your teacher for a new one."
             )
         return code
 

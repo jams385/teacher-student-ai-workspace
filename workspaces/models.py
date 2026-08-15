@@ -1,5 +1,28 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
+
+
+class Profile(models.Model):
+    """Distinguishes a teacher account from a student account within the
+    single shared auth.User table. Always set explicitly at account-creation
+    time (teacher_signup / student_signup_activate) — no default, since a
+    User with no Profile row (e.g. one made via createsuperuser) should
+    fail closed rather than silently default into either role."""
+
+    class Role(models.TextChoices):
+        TEACHER = 'teacher', 'Teacher'
+        STUDENT = 'student', 'Student'
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='profile',
+    )
+    role = models.CharField(max_length=10, choices=Role.choices)
+
+    def __str__(self):
+        return f'{self.user.username} ({self.get_role_display()})'
 
 
 class Workspace(models.Model):
@@ -80,17 +103,90 @@ class Slide(models.Model):
         return f'Slide {self.index} of material {self.material_id}'
 
 
+class RosterInvite(models.Model):
+    """A teacher-issued, one-time code letting a named student create their
+    own account (see student_signup_activate) for a specific workspace.
+
+    Account creation is deliberately gated this way rather than open
+    self-signup — the teacher decides who gets an account, which is both a
+    stronger access control and a cleaner Philippines Data Privacy Act
+    consent story (processing flows from the school's existing relationship
+    with the student rather than an anonymous stranger registering).
+
+    `claimed_at` (not `student`) is the authoritative "has this code been
+    used" flag: `student` uses SET_NULL, so it can go back to null later
+    (e.g. a future account-deletion feature) without the code becoming
+    reusable again.
+    """
+
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.CASCADE,
+        related_name='roster_invites',
+    )
+    display_name = models.CharField(max_length=100)
+    code = models.CharField(max_length=16, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='claimed_roster_invites',
+    )
+
+    def __str__(self):
+        status = 'claimed' if self.claimed_at else 'pending'
+        return f'Invite for {self.display_name} in {self.workspace.name} ({status})'
+
+
 class StudentSession(models.Model):
-    """A lightweight, account-free session for a student in a workspace."""
+    """A student's presence in a workspace. Two ways to end up here:
+
+    - Anonymous (the default, unchanged): a cookie-keyed row with no
+      account, created by student_join — see that view's docstring.
+    - Account-linked: `student` is set to a logged-in student's User, so
+      their joined workspaces + transcripts persist across devices/logins
+      (see student_home). SET_NULL (not CASCADE) on `student` is
+      deliberate: a deleted student account should leave this row exactly
+      as informative as an anonymous session already is today, not silently
+      wipe Message/Flag history a teacher may have a legitimate ongoing
+      reason to still see.
+
+    A logged-in student gets at most one row per workspace (see the unique
+    constraint below) — rejoining reuses the same row instead of
+    fragmenting history across rows, unlike the anonymous flow.
+    """
 
     workspace = models.ForeignKey(
         Workspace,
         on_delete=models.CASCADE,
         related_name='student_sessions',
     )
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='student_sessions',
+    )
     display_name = models.CharField(max_length=100)
-    session_id = models.CharField(max_length=64, unique=True)
+    # Which browser session currently resolves to this row (see
+    # views._get_student_session). Nullable: an account-linked row that
+    # isn't the "active" one in any browser tab right now has no session_id
+    # — see views._attach_active_session for how that handoff works.
+    session_id = models.CharField(max_length=64, unique=True, null=True, blank=True)
     joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['student', 'workspace'],
+                condition=Q(student__isnull=False),
+                name='unique_student_workspace_when_authenticated',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.display_name} in {self.workspace.name}'

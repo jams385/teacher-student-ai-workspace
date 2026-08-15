@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}My workspaces{% endblock %}
+
+{% block content %}
+<h1>My workspaces</h1>
+
+{% if student_sessions %}
+<table>
+    <thead>
+        <tr>
+            <th>Workspace</th>
+            <th>Mode</th>
+            <th>Joined</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for session in student_sessions %}
+        <tr>
+            <td>{{ session.workspace.name }}</td>
+            <td>{{ session.workspace.get_mode_display }}</td>
+            <td>{{ session.joined_at|date:"M j, Y g:i A" }}</td>
+            <td><a href="{% url 'student_workspace_transcript' pk=session.workspace.pk %}">View</a></td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>You haven't joined any workspaces yet with this account. Got a join code? <a href="{% url 'student_join' %}">Join a workspace</a>.</p>
+{% endif %}
+{% endblock %}

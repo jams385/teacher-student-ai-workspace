@@ -11,8 +11,18 @@ from django.urls import reverse
 
 from . import ai_client, moderation, storage
 from .forms import MaterialUploadForm
-from .models import Flag, Material, Message, Slide, StudentSession, Workspace
+from .models import Flag, Material, Message, Profile, Slide, StudentSession, Workspace
 from .utils import extract_pptx_text, rasterize_pdf
+
+
+def _create_teacher(username, password='pw'):
+    """Every teacher-gated view now requires a Profile(role='teacher'), not
+    just an authenticated User — see workspaces.decorators.teacher_required.
+    All logged-in users in this test file are teachers, so every
+    create_user() call in these tests goes through this helper."""
+    user = get_user_model().objects.create_user(username=username, password=password)
+    Profile.objects.create(user=user, role=Profile.Role.TEACHER)
+    return user
 
 
 def _make_pptx_bytes(slide_texts):
@@ -69,7 +79,7 @@ class FindJailbreakAttemptsTests(TestCase):
 
 class SendMessageFlaggingTests(TestCase):
     def setUp(self):
-        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.teacher = _create_teacher('teacher')
         self.workspace = Workspace.objects.create(
             teacher=self.teacher, name='Test Class', mode=Workspace.Mode.SOCRATIC, join_code='ABCDEF',
         )
@@ -113,7 +123,7 @@ class SendMessageFlaggingTests(TestCase):
 
 class FlagDashboardTests(TestCase):
     def setUp(self):
-        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.teacher = _create_teacher('teacher')
         self.workspace = Workspace.objects.create(
             teacher=self.teacher, name='Test Class', mode=Workspace.Mode.SOCRATIC, join_code='ABCDEF',
         )
@@ -141,7 +151,7 @@ class FlagDashboardTests(TestCase):
         self.assertTrue(self.flag.reviewed)
 
     def test_other_teacher_cannot_mark_reviewed(self):
-        other = get_user_model().objects.create_user(username='other', password='pw')
+        other = _create_teacher('other')
         self.client.login(username='other', password='pw')
         response = self.client.post(
             reverse('flag_mark_reviewed', args=[self.workspace.pk, self.flag.pk])
@@ -231,7 +241,7 @@ class MaterialUploadFormPptxTests(TestCase):
 
 class GenerateLectureOutlineTests(TestCase):
     def setUp(self):
-        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.teacher = _create_teacher('teacher')
         self.workspace = Workspace.objects.create(
             teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='LECTUR',
         )
@@ -266,7 +276,7 @@ class GenerateLectureOutlineTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_other_teacher_cannot_generate_outline(self):
-        get_user_model().objects.create_user(username='other', password='pw')
+        _create_teacher('other')
         self.client.login(username='other', password='pw')
         response = self.client.post(reverse('generate_lecture_outline', args=[self.workspace.pk]))
         self.assertEqual(response.status_code, 404)
@@ -274,7 +284,7 @@ class GenerateLectureOutlineTests(TestCase):
 
 class MaterialDeleteTests(TestCase):
     def setUp(self):
-        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.teacher = _create_teacher('teacher')
         self.workspace = Workspace.objects.create(
             teacher=self.teacher, name='Test Class', mode=Workspace.Mode.SOCRATIC, join_code='ABCDEF',
         )
@@ -296,7 +306,7 @@ class MaterialDeleteTests(TestCase):
         self.assertFalse(Material.objects.filter(pk=self.material.pk).exists())
 
     def test_other_teacher_cannot_delete(self):
-        get_user_model().objects.create_user(username='other', password='pw')
+        _create_teacher('other')
         self.client.login(username='other', password='pw')
         response = self.client.post(reverse('material_delete', args=[self.workspace.pk, self.material.pk]))
         self.assertEqual(response.status_code, 404)
@@ -313,7 +323,7 @@ class MaterialDeleteTests(TestCase):
 
 class MaterialDeleteSlidesTests(TestCase):
     def setUp(self):
-        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.teacher = _create_teacher('teacher')
         self.workspace = Workspace.objects.create(
             teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='DELSLD',
         )
@@ -349,7 +359,7 @@ class RasterizePdfTests(TestCase):
 
 class MaterialUploadSlidesTests(TestCase):
     def setUp(self):
-        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.teacher = _create_teacher('teacher')
         self.workspace = Workspace.objects.create(
             teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='UPLSLD',
         )
@@ -382,7 +392,7 @@ class MaterialUploadSlidesTests(TestCase):
 
 class PresenterViewsTests(TestCase):
     def setUp(self):
-        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.teacher = _create_teacher('teacher')
         self.workspace = Workspace.objects.create(
             teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='PRESNT',
         )
@@ -436,7 +446,7 @@ class PresenterViewsTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_other_teacher_cannot_present(self):
-        get_user_model().objects.create_user(username='other', password='pw')
+        _create_teacher('other')
         self.client.login(username='other', password='pw')
         response = self.client.post(reverse('present_material', args=[self.workspace.pk, self.material.pk]))
         self.assertEqual(response.status_code, 404)
@@ -448,7 +458,7 @@ class SlideImageAuthorizationTests(TestCase):
     from the DB on every single request — see views.slide_image."""
 
     def setUp(self):
-        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.teacher = _create_teacher('teacher')
         self.workspace = Workspace.objects.create(
             teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='SLDIMG',
         )
@@ -482,7 +492,7 @@ class SlideImageAuthorizationTests(TestCase):
         self.assertEqual(response['Content-Type'], 'image/png')
 
     def test_other_teacher_forbidden(self):
-        get_user_model().objects.create_user(username='other', password='pw')
+        _create_teacher('other')
         self.client.login(username='other', password='pw')
         response = self.client.get(self._url(0))
         self.assertEqual(response.status_code, 403)
@@ -540,7 +550,7 @@ class SlideImageAuthorizationTests(TestCase):
 
 class LiveStatusTests(TestCase):
     def setUp(self):
-        self.teacher = get_user_model().objects.create_user(username='teacher', password='pw')
+        self.teacher = _create_teacher('teacher')
         self.workspace = Workspace.objects.create(
             teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='LIVSTA',
         )

@@ -1,9 +1,9 @@
 from pypdf.errors import PyPdfError
 
 from django.contrib.auth import login
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib import messages
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -12,18 +12,26 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from . import ai_client, moderation, storage
-from .forms import MaterialUploadForm, StudentJoinForm, WorkspaceForm
-from .models import Flag, Material, Message, Slide, StudentSession, Workspace
-from .utils import extract_pdf_text, extract_pptx_text, generate_unique_join_code, keyword_frequency, rasterize_pdf
+from .decorators import student_required, teacher_required
+from .forms import (
+    MaterialUploadForm, RosterInviteForm, StudentActivationForm, StudentJoinForm, WorkspaceForm,
+)
+from .models import Flag, Material, Message, Profile, RosterInvite, Slide, StudentSession, Workspace
+from .utils import (
+    extract_pdf_text, extract_pptx_text, generate_unique_invite_code, generate_unique_join_code,
+    keyword_frequency, rasterize_pdf,
+)
 
 
 def teacher_signup(request):
-    """Self-serve account creation for teachers. Students never get accounts —
-    they join a workspace via join code (see StudentSession)."""
+    """Self-serve account creation for teachers. Students don't get open
+    self-signup — a teacher issues each student a one-time roster invite
+    code instead (see roster_add / student_signup_activate)."""
     if request.method == 'POST':
         form = UserCreationForm(request.POST)
         if form.is_valid():
             user = form.save()
+            Profile.objects.create(user=user, role=Profile.Role.TEACHER)
             login(request, user)
             messages.success(request, 'Welcome! Your teacher account has been created.')
             return redirect('workspace_list')
@@ -32,13 +40,13 @@ def teacher_signup(request):
     return render(request, 'registration/signup.html', {'form': form})
 
 
-@login_required
+@teacher_required
 def workspace_list(request):
     workspaces = request.user.workspaces.order_by('-created_at')
     return render(request, 'workspaces/workspace_list.html', {'workspaces': workspaces})
 
 
-@login_required
+@teacher_required
 def workspace_create(request):
     if request.method == 'POST':
         form = WorkspaceForm(request.POST)
@@ -57,7 +65,7 @@ def workspace_create(request):
     return render(request, 'workspaces/workspace_form.html', {'form': form})
 
 
-@login_required
+@teacher_required
 def workspace_detail(request, pk):
     """Workspace info + course material upload. Also where a teacher will
     eventually review transcripts — dashboard, not this step."""
@@ -167,7 +175,7 @@ def workspace_detail(request, pk):
     return render(request, 'workspaces/workspace_detail.html', context)
 
 
-@login_required
+@teacher_required
 @require_POST
 def generate_lecture_outline(request, pk):
     """Teacher-triggered: generate (or regenerate) a Lecture Mode workspace's
@@ -200,7 +208,7 @@ def generate_lecture_outline(request, pk):
     return redirect('workspace_detail', pk=workspace.pk)
 
 
-@login_required
+@teacher_required
 @require_POST
 def material_delete(request, pk, material_pk):
     """Teacher-triggered: remove an uploaded material, in any workspace mode.
@@ -243,7 +251,7 @@ def _presenter_context(workspace):
     }
 
 
-@login_required
+@teacher_required
 @require_POST
 def present_material(request, pk, material_pk):
     """Teacher-triggered: start presenting a material's slides live. Only
@@ -262,7 +270,7 @@ def present_material(request, pk, material_pk):
     return render(request, 'workspaces/partials/_presenter.html', _presenter_context(workspace))
 
 
-@login_required
+@teacher_required
 @require_POST
 def stop_presenting(request, pk):
     """Teacher-triggered: end the live presentation. Explicit action, matching
@@ -275,7 +283,7 @@ def stop_presenting(request, pk):
     return render(request, 'workspaces/partials/_presenter.html', _presenter_context(workspace))
 
 
-@login_required
+@teacher_required
 @require_POST
 def presenter_next(request, pk):
     """Teacher-triggered: advance the live slide by one, clamped to the last slide."""
@@ -287,7 +295,7 @@ def presenter_next(request, pk):
     return render(request, 'workspaces/partials/_presenter.html', _presenter_context(workspace))
 
 
-@login_required
+@teacher_required
 @require_POST
 def presenter_prev(request, pk):
     """Teacher-triggered: go back one live slide, clamped to the first slide."""
@@ -361,7 +369,7 @@ def live_status(request):
     })
 
 
-@login_required
+@teacher_required
 def workspace_dashboard(request, pk):
     """Students in this workspace with message counts, a simple
     workspace-wide keyword-frequency view of what they're asking about, and
@@ -391,10 +399,47 @@ def workspace_dashboard(request, pk):
         'student_sessions': student_sessions,
         'keywords': keyword_frequency(student_message_texts),
         'flags': flags,
+        'roster_invites': workspace.roster_invites.select_related('student').order_by('-created_at'),
+        'roster_form': RosterInviteForm(),
     })
 
 
-@login_required
+@teacher_required
+@require_POST
+def roster_add(request, pk):
+    """Teacher adds one named student to this workspace's roster, issuing a
+    one-time activation code the student redeems at student_signup_activate
+    to create their own account. Account creation is gated this way rather
+    than open self-signup — the teacher decides who gets one."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
+    form = RosterInviteForm(request.POST)
+    if form.is_valid():
+        invite = RosterInvite.objects.create(
+            workspace=workspace,
+            display_name=form.cleaned_data['display_name'],
+            code=generate_unique_invite_code(),
+        )
+        messages.success(request, f'Activation code for "{invite.display_name}": {invite.code}')
+    else:
+        messages.error(request, "Couldn't add that student — enter a name.")
+    return redirect('workspace_dashboard', pk=workspace.pk)
+
+
+@teacher_required
+@require_POST
+def roster_revoke(request, pk, invite_pk):
+    """Teacher cancels a not-yet-claimed roster invite. Only unclaimed
+    invites are revocable — once a student has activated an account with a
+    code, revoking it wouldn't undo the account, so the button simply isn't
+    offered for claimed rows (see workspace_dashboard.html)."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user)
+    invite = get_object_or_404(RosterInvite, pk=invite_pk, workspace=workspace, claimed_at__isnull=True)
+    invite.delete()
+    messages.success(request, f'Revoked the activation code for "{invite.display_name}".')
+    return redirect('workspace_dashboard', pk=workspace.pk)
+
+
+@teacher_required
 @require_POST
 def flag_mark_reviewed(request, pk, flag_pk):
     """HTMX endpoint: teacher marks a flagged message as reviewed. Scoped to
@@ -411,7 +456,7 @@ def flag_mark_reviewed(request, pk, flag_pk):
     return render(request, 'workspaces/partials/_flag_row.html', {'workspace': workspace, 'flag': flag})
 
 
-@login_required
+@teacher_required
 def session_transcript(request, pk, session_pk):
     """Read-only transcript for one student's session — reuses the same chat
     bubble partial the live chat view uses, just with no send form."""
@@ -428,26 +473,81 @@ def session_transcript(request, pk, session_pk):
     })
 
 
-def student_join(request):
-    """A student enters a join code + display name — no account, no password.
+def _is_student(user):
+    profile = getattr(user, 'profile', None)
+    return profile is not None and profile.role == Profile.Role.STUDENT
 
-    Identity for the rest of the chat is carried by Django's own session
-    cookie: `StudentSession.session_id` is set to `request.session.session_key`,
-    so student_chat() below can look up "who is this browser" without any
-    login system. Joining always starts a fresh browser session (flush, then
+
+def _attach_active_session(request, target_session):
+    """Make `target_session` the row _get_student_session() resolves to.
+
+    Steals the browser's session_id away from whatever OTHER StudentSession
+    row currently holds it — session_id is unique across the whole table,
+    and only one row can be "active" (i.e. what the chat views resolve to)
+    in a given browser tab at a time. This is how a logged-in student with
+    several joined workspaces switches which one is "live" in this tab,
+    without touching Django's own session/login state at all.
+
+    Known limitation, not fixed here: two tabs open on two different
+    workspaces under the same login will fight over session_id — the
+    second tab's attach silently steals it from the first, so a stale first
+    tab's next message gets filed into the second workspace's transcript
+    instead of erroring out. The anonymous flow fails loudly here (redirect
+    to /join/); this fails quietly. The app has never supported concurrent
+    multi-tab chatting, so not solving this now.
+    """
+    if not request.session.session_key:
+        request.session.create()
+    key = request.session.session_key
+    with transaction.atomic():
+        StudentSession.objects.filter(session_id=key).exclude(pk=target_session.pk).update(session_id=None)
+        target_session.session_id = key
+        target_session.save(update_fields=['session_id'])
+
+
+def _join_workspace_as_student(request, workspace, display_name):
+    """Find-or-create the logged-in student's StudentSession for `workspace`
+    (see the unique_student_workspace_when_authenticated constraint — a
+    student gets exactly one row per workspace, so rejoining accumulates
+    history in place instead of fragmenting across rows) and make it the
+    active one in this browser tab."""
+    student_session, _ = StudentSession.objects.update_or_create(
+        student=request.user, workspace=workspace,
+        defaults={'display_name': display_name},
+    )
+    _attach_active_session(request, student_session)
+    return student_session
+
+
+def student_join(request):
+    """A student enters a join code + display name.
+
+    Anonymous (the default): no account, no password. Identity for the rest
+    of the chat is carried by Django's own session cookie —
+    `StudentSession.session_id` is set to `request.session.session_key`, so
+    student_chat() below can look up "who is this browser" without any login
+    system. Joining always starts a fresh browser session (flush, then
     create) so re-joining — a new tab, a different workspace, coming back
     later — never collides with a stale StudentSession row.
+
+    Logged-in student: same join code + display name form, but the join
+    attaches to their account instead (_join_workspace_as_student) — no
+    session flush, since that would also log them out (Django's auth state
+    lives in the session). Their login stays put; only session_id moves.
     """
     if request.method == 'POST':
         form = StudentJoinForm(request.POST)
         if form.is_valid():
-            request.session.flush()
-            request.session.create()
-            StudentSession.objects.create(
-                workspace=form.workspace,
-                display_name=form.cleaned_data['display_name'],
-                session_id=request.session.session_key,
-            )
+            if request.user.is_authenticated and _is_student(request.user):
+                _join_workspace_as_student(request, form.workspace, form.cleaned_data['display_name'])
+            else:
+                request.session.flush()
+                request.session.create()
+                StudentSession.objects.create(
+                    workspace=form.workspace,
+                    display_name=form.cleaned_data['display_name'],
+                    session_id=request.session.session_key,
+                )
             return redirect('student_chat')
     else:
         form = StudentJoinForm()
@@ -562,3 +662,106 @@ def send_message(request):
     return render(request, 'workspaces/partials/_messages.html', {
         'chat_messages': [student_message, ai_message],
     })
+
+
+# --- Student accounts -------------------------------------------------
+#
+# Everything above this point is the original, fully anonymous join-by-code
+# flow and stays exactly as-is. What follows is an additive second path: a
+# student who wants their joined workspaces + chat history to persist across
+# devices/logins can hold a real account. Account creation is gated by a
+# teacher-issued RosterInvite (see roster_add above), not open self-signup.
+
+
+def student_login(request):
+    """Separate from the teacher's /accounts/login/ — a shared login page
+    would need its own role check anyway, and this keeps the two flows
+    (and their very different redirect targets) independent.
+
+    AuthenticationForm.is_valid() only authenticates; it doesn't establish
+    a session. So if the role check below fails, there's nothing to undo —
+    request.user is still AnonymousUser for the rest of this request, no
+    logout() call needed.
+    """
+    if request.method == 'POST':
+        form = AuthenticationForm(request, data=request.POST)
+        if form.is_valid():
+            user = form.get_user()
+            if _is_student(user):
+                login(request, user)
+                return redirect('student_home')
+            form.add_error(None, 'This login is for students. Teachers should use the teacher log in page.')
+    else:
+        form = AuthenticationForm(request)
+    return render(request, 'registration/student_login.html', {'form': form})
+
+
+def student_signup_activate(request):
+    """A student redeems a teacher-issued RosterInvite code to create their
+    own account, then is auto-joined to the invite's workspace."""
+    if request.user.is_authenticated:
+        messages.error(request, "You're already logged in — log out first to activate a new student account.")
+        return redirect('student_home' if _is_student(request.user) else 'workspace_list')
+
+    if request.method == 'POST':
+        form = StudentActivationForm(request.POST)
+        if form.is_valid():
+            invite = form.invite
+            user = form.save()
+            Profile.objects.create(user=user, role=Profile.Role.STUDENT)
+            if form.cleaned_data.get('email'):
+                user.email = form.cleaned_data['email']
+                user.save(update_fields=['email'])
+            invite.claimed_at = timezone.now()
+            invite.student = user
+            invite.save(update_fields=['claimed_at', 'student'])
+
+            login(request, user)
+            _join_workspace_as_student(request, invite.workspace, invite.display_name)
+            messages.success(request, f'Welcome, {invite.display_name}! Your account is ready.')
+            return redirect('student_home')
+    else:
+        form = StudentActivationForm()
+    return render(request, 'workspaces/roster_activate.html', {'form': form})
+
+
+@student_required
+def student_home(request):
+    """A logged-in student's "My Workspaces" list — every workspace they've
+    joined while authenticated, most recent first."""
+    student_sessions = request.user.student_sessions.select_related('workspace').order_by('-joined_at')
+    return render(request, 'workspaces/student_home.html', {'student_sessions': student_sessions})
+
+
+@student_required
+def student_workspace_transcript(request, pk):
+    """Read-only transcript for one of the logged-in student's own joined
+    workspaces, plus a "Continue chatting" action. Scoped by student=
+    request.user, not just the StudentSession pk — otherwise a tampered URL
+    could read/attach another student's row."""
+    student_session = get_object_or_404(
+        StudentSession.objects.select_related('workspace'),
+        workspace_id=pk, student=request.user,
+    )
+    return render(request, 'workspaces/student_workspace_transcript.html', {
+        'workspace': student_session.workspace,
+        'student_session': student_session,
+        'chat_messages': student_session.messages.all(),
+        # Students never see flag badges on their own messages — same rule
+        # as the live chat view (see _message.html).
+        'show_flags': False,
+    })
+
+
+@student_required
+@require_POST
+def student_workspace_continue(request, pk):
+    """Make one of the student's already-joined workspaces the active one in
+    this browser tab, then drop them into the normal live chat view — no
+    join-code/display-name re-entry needed, we already have both on file."""
+    student_session = get_object_or_404(
+        StudentSession.objects.select_related('workspace'),
+        workspace_id=pk, student=request.user,
+    )
+    _attach_active_session(request, student_session)
+    return redirect('student_chat')
