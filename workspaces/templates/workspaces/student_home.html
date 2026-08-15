@@ -1,32 +1,37 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}My workspaces{% endblock %}
 
 {% block content %}
-<h1>My workspaces</h1>
+<div class="workspace-page">
+    <img class="workspace-page__blob workspace-page__blob--top" src="{% static 'workspaces/vendor/hero/hero-blob-small.svg' %}" alt="" aria-hidden="true">
+    <img class="workspace-page__blob workspace-page__blob--bottom" src="{% static 'workspaces/vendor/hero/hero-blob-large.svg' %}" alt="" aria-hidden="true">
 
-{% if student_sessions %}
-<table>
-    <thead>
-        <tr>
-            <th>Workspace</th>
-            <th>Mode</th>
-            <th>Joined</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for session in student_sessions %}
-        <tr>
-            <td>{{ session.workspace.name }}</td>
-            <td>{{ session.workspace.get_mode_display }}</td>
-            <td>{{ session.joined_at|date:"M j, Y g:i A" }}</td>
-            <td><a href="{% url 'student_workspace_transcript' pk=session.workspace.pk %}">View</a></td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<p>You haven't joined any workspaces yet with this account. Got a join code? <a href="{% url 'student_join' %}">Join a workspace</a>.</p>
-{% endif %}
+    <div class="page-header">
+        <div>
+            <h1>My workspaces</h1>
+            <p class="page-header__subtext">Classes you've joined while signed in to this account.</p>
+        </div>
+        <a href="{% url 'student_join' %}" class="btn btn-primary">+ Join a workspace</a>
+    </div>
+
+    {% if student_sessions %}
+    <div class="workspace-grid">
+        {% for session in student_sessions %}
+        <article class="workspace-card">
+            <span class="badge badge--{{ session.workspace.mode }}">{{ session.workspace.get_mode_display }}</span>
+            <h2 class="workspace-card__name"><a href="{% url 'student_workspace_transcript' pk=session.workspace.pk %}">{{ session.workspace.name }}</a></h2>
+            <p class="workspace-card__meta">Joined {{ session.joined_at|date:"M j, Y" }}</p>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <h2>No workspaces yet</h2>
+        <p>Got a join code from your teacher? Enter it to start chatting.</p>
+        <a href="{% url 'student_join' %}" class="btn btn-primary">Join a workspace</a>
+    </div>
+    {% endif %}
+</div>
 {% endblock %}

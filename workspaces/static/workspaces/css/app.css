@@ -214,6 +214,15 @@ button, input, select, textarea {
   transition: background-color .15s ease, border-color .15s ease, color .15s ease;
 }
 
+/* Global, not a one-off: any .btn that's also toggled via the plain HTML
+   `hidden` attribute (e.g. slide-jump-latest in chat.html) needs this, or
+   the class selector's own `display: inline-flex` above silently beats
+   the UA stylesheet's much-lower-specificity `[hidden] { display: none }`
+   default, defeating `element.hidden = true` in JS. */
+.btn[hidden] {
+  display: none;
+}
+
 .btn-primary {
   background: var(--color-primary-light);
   border-color: var(--color-primary-light-border);
@@ -1665,6 +1674,193 @@ button, input, select, textarea {
 }
 
 /* --------------------------------------------------------------------------
+   Lecture Mode student view (chat.html)
+   From a reference mockup, not Figma — translated out of its dark UI into
+   this app's existing light/amber palette rather than adding a second
+   theme. The one exception is the slide stage's own backdrop, which stays
+   --color-black (an existing token, not a new one) — a rasterized slide
+   image can be any aspect ratio, so it needs a neutral letterbox behind
+   it regardless of the surrounding page's theme, same reasoning a photo
+   viewer or video player would use.
+   .lecture-layout is the two-column shell (slide stage left, chat/summary
+   tabs right) — only Lecture Mode's chat.html branch renders it; Socratic
+   and Homework Mode fall through to the plain full-width .chat-window
+   already used elsewhere, unchanged.
+   -------------------------------------------------------------------------- */
+.lecture-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
+  gap: var(--space-5);
+  align-items: start;
+  margin-top: var(--space-2);
+}
+
+.lecture-stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.lecture-stage__frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  background: var(--color-black);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+/* slideshow.js toggles the `hidden` attribute on this element directly —
+   without this override, the class selector's own `display: flex` above
+   beats the UA stylesheet's much-lower-specificity `[hidden] { display:
+   none }` default, silently defeating `.hidden = true/false` in JS. */
+.lecture-stage__frame[hidden] {
+  display: none;
+}
+
+.lecture-stage__image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.lecture-stage__live-dot {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-black) 55%, transparent);
+  color: var(--color-white);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Shown instead of .lecture-stage__frame whenever nothing is live — pure
+   CSS via the sibling combinator on the frame's own `hidden` attribute
+   (which slideshow.js already toggles), no extra JS state to keep in
+   sync. */
+.lecture-stage__placeholder {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  background: var(--color-gray-100);
+  border: 1px dashed var(--color-gray-200);
+  border-radius: var(--radius-card);
+  color: var(--color-accent-dark);
+  text-align: center;
+  padding: var(--space-5);
+}
+
+#slideshow-viewer[hidden] ~ .lecture-stage__placeholder {
+  display: flex;
+}
+
+/* The #live-status span itself (workspaces/partials/_slideshow.html) —
+   server-rendered on every page load and every 4s poll, so its text
+   ("Live: slide N of M" / "hasn't started a presentation yet") is always
+   accurate without any client-side duplication of that math. */
+.lecture-stage__status {
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+}
+
+.lecture-stage__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+/* Same `[hidden]` override reasoning as .lecture-stage__frame above —
+   toggled together with the frame so Prev/Next/Jump don't sit around
+   visibly enabled when there's no presentation for them to act on. */
+.lecture-stage__controls[hidden] {
+  display: none;
+}
+
+.lecture-stage__caption {
+  margin: 0;
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+}
+
+.lecture-panel {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.lecture-panel__tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.lecture-panel__tab {
+  flex: 1;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent-dark);
+  cursor: pointer;
+}
+
+.lecture-panel__tab.is-active {
+  color: var(--color-black);
+  border-bottom-color: var(--color-primary-light-border);
+}
+
+.lecture-panel__pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+/* Same `[hidden]` override reasoning as .lecture-stage__frame above — the
+   tab-switcher script toggles `hidden` on whichever pane isn't active. */
+.lecture-panel__pane[hidden] {
+  display: none;
+}
+
+.lecture-panel__summary {
+  color: var(--color-black);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
+.lecture-panel__empty {
+  color: var(--color-accent-dark);
+}
+
+/* Modifier, not a change to the base .chat-window — the live chat pages
+   (this one) benefit from a capped, internally-scrolling pane since it
+   sits fixed-height next to the slide stage; the read-only transcript
+   pages reuse plain .chat-window and should keep growing with the page
+   instead. */
+.chat-window--scroll {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.chat-send-form {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.chat-send-form .form-input {
+  flex: 1;
+}
+
+/* --------------------------------------------------------------------------
    Layout shell
    -------------------------------------------------------------------------- */
 .site-header {
@@ -1876,5 +2072,13 @@ button, input, select, textarea {
 
   .chat-message {
     max-width: 90%;
+  }
+
+  .lecture-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-window--scroll {
+    max-height: 320px;
   }
 }

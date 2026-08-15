@@ -3,131 +3,195 @@
 {% block title %}{{ workspace.name }}{% endblock %}
 
 {% block content %}
-<h1>{{ workspace.name }}</h1>
-<p>Mode: {{ workspace.get_mode_display }}</p>
-<p>Chatting as <strong>{{ student_session.display_name }}</strong></p>
+<div class="page-header">
+    <div>
+        <h1>{{ workspace.name }}</h1>
+        <p class="page-header__subtext">
+            <span class="badge badge--{{ workspace.mode }}">{{ workspace.get_mode_display }}</span>
+            &middot; Chatting as {{ student_session.display_name }}
+        </p>
+    </div>
+    {% if user.is_authenticated %}
+    <a href="{% url 'student_home' %}" class="back-link">&larr; My workspaces</a>
+    {% endif %}
+</div>
 
 {% if workspace.mode == 'lecture' %}
-<section id="slideshow">
-    <h2>Live slideshow</h2>
-    {% include 'workspaces/partials/_slideshow.html' %}
-
-    <div id="slideshow-viewer" hidden>
-        <img id="slide-image" alt="Current slide" style="max-width: 100%;">
-        <div>
-            <button type="button" id="slide-prev">&larr; Prev</button>
-            <button type="button" id="slide-next">Next &rarr;</button>
-            <button type="button" id="slide-jump-latest" hidden>Jump to latest &#9654;</button>
+<section id="slideshow" class="lecture-layout">
+    <div class="lecture-stage">
+        <div class="lecture-stage__frame" id="slideshow-viewer" hidden>
+            <img id="slide-image" class="lecture-stage__image" alt="Current slide">
+            <span id="lecture-live-dot" class="lecture-stage__live-dot" hidden>&#9679; Following live</span>
         </div>
+        <div class="lecture-stage__placeholder">
+            <p>Your teacher hasn't started presenting yet.</p>
+        </div>
+
+        {% include 'workspaces/partials/_slideshow.html' %}
+
+        <div class="lecture-stage__controls" id="slide-controls" hidden>
+            <button type="button" id="slide-prev" class="btn btn-secondary btn-sm">&larr; Prev</button>
+            <button type="button" id="slide-next" class="btn btn-secondary btn-sm">Next &rarr;</button>
+            <button type="button" id="slide-jump-latest" class="btn btn-primary btn-sm" hidden>Jump to latest &#9654;</button>
+        </div>
+        <p class="lecture-stage__caption">Slides advance automatically as your teacher presents.</p>
     </div>
 
-    <script>
-        // Client-side state is UX convenience only — the real "can't see
-        // ahead of the teacher" enforcement happens server-side, on every
-        // request, in views.slide_image. A student editing currentIndex in
-        // devtools just gets 403s from the image endpoint.
-        (function () {
-            var workspacePk = {{ workspace.pk }};
-            var viewer = document.getElementById('slideshow-viewer');
-            var img = document.getElementById('slide-image');
-            var prevBtn = document.getElementById('slide-prev');
-            var nextBtn = document.getElementById('slide-next');
-            var jumpBtn = document.getElementById('slide-jump-latest');
+    <div class="lecture-panel">
+        <div class="lecture-panel__tabs" role="tablist">
+            <button type="button" class="lecture-panel__tab is-active" data-pane="chat" role="tab" aria-selected="true">Ask the AI</button>
+            <button type="button" class="lecture-panel__tab" data-pane="summary" role="tab" aria-selected="false">Lesson summary</button>
+        </div>
 
-            var currentIndex = null;  // what the student is viewing
-            var liveIndex = null;     // teacher's current position, refreshed each poll
-            var materialPk = null;
-            var following = true;     // true until the student navigates backward
+        <div class="lecture-panel__pane" data-pane="chat">
+            <div id="message-list" class="chat-window chat-window--scroll">
+                {% include 'workspaces/partials/_messages.html' %}
+            </div>
+            <form
+                class="chat-send-form"
+                hx-post="{% url 'send_message' %}"
+                hx-target="#message-list"
+                hx-swap="beforeend"
+                hx-on="htmx:afterRequest: this.reset()"
+            >
+                {% csrf_token %}
+                <input type="text" name="message" class="form-input" placeholder="Ask a question..." required autocomplete="off">
+                <button type="submit" class="btn btn-primary">Send</button>
+            </form>
+        </div>
 
-            function slideUrl(index) {
-                return '/' + workspacePk + '/materials/' + materialPk + '/slides/' + index + '/';
+        <div class="lecture-panel__pane" data-pane="summary" hidden>
+            {% if workspace.lecture_outline %}
+                <div class="lecture-panel__summary">{{ workspace.lecture_outline|linebreaksbr }}</div>
+            {% else %}
+                <p class="lecture-panel__empty"><em>Your teacher hasn't generated a lecture outline yet.</em></p>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<script>
+    // Client-side state is UX convenience only — the real "can't see
+    // ahead of the teacher" enforcement happens server-side, on every
+    // request, in views.slide_image. A student editing currentIndex in
+    // devtools just gets 403s from the image endpoint.
+    (function () {
+        var workspacePk = {{ workspace.pk }};
+        var viewer = document.getElementById('slideshow-viewer');
+        var img = document.getElementById('slide-image');
+        var liveDot = document.getElementById('lecture-live-dot');
+        var prevBtn = document.getElementById('slide-prev');
+        var nextBtn = document.getElementById('slide-next');
+        var jumpBtn = document.getElementById('slide-jump-latest');
+        var controls = document.getElementById('slide-controls');
+
+        var currentIndex = null;  // what the student is viewing
+        var liveIndex = null;     // teacher's current position, refreshed each poll
+        var materialPk = null;
+        var following = true;     // true until the student navigates backward
+
+        function slideUrl(index) {
+            return '/' + workspacePk + '/materials/' + materialPk + '/slides/' + index + '/';
+        }
+
+        function render() {
+            if (liveIndex === null || materialPk === null) {
+                viewer.hidden = true;
+                controls.hidden = true;
+                return;
             }
+            viewer.hidden = false;
+            controls.hidden = false;
+            img.src = slideUrl(currentIndex);
+            prevBtn.disabled = currentIndex <= 0;
+            nextBtn.disabled = currentIndex >= liveIndex;
+            jumpBtn.hidden = following || currentIndex >= liveIndex;
+            liveDot.hidden = !following;
+        }
 
-            function render() {
-                if (liveIndex === null || materialPk === null) {
-                    viewer.hidden = true;
-                    return;
-                }
-                viewer.hidden = false;
-                img.src = slideUrl(currentIndex);
-                prevBtn.disabled = currentIndex <= 0;
-                nextBtn.disabled = currentIndex >= liveIndex;
-                jumpBtn.hidden = following || currentIndex >= liveIndex;
+        prevBtn.addEventListener('click', function () {
+            if (currentIndex > 0) {
+                currentIndex -= 1;
+                following = false;
+                render();
             }
+        });
+        nextBtn.addEventListener('click', function () {
+            if (currentIndex < liveIndex) {
+                currentIndex += 1;
+                following = currentIndex >= liveIndex;
+                render();
+            }
+        });
+        jumpBtn.addEventListener('click', function () {
+            currentIndex = liveIndex;
+            following = true;
+            render();
+        });
 
-            prevBtn.addEventListener('click', function () {
-                if (currentIndex > 0) {
-                    currentIndex -= 1;
-                    following = false;
-                    render();
-                }
-            });
-            nextBtn.addEventListener('click', function () {
-                if (currentIndex < liveIndex) {
-                    currentIndex += 1;
-                    following = currentIndex >= liveIndex;
-                    render();
-                }
-            });
-            jumpBtn.addEventListener('click', function () {
-                currentIndex = liveIndex;
+        function applyStatus(statusEl) {
+            var newMaterialPk = statusEl.dataset.materialPk || null;
+            var rawIndex = statusEl.dataset.liveIndex;
+            var newLiveIndex = (rawIndex === '' || rawIndex === undefined) ? null : parseInt(rawIndex, 10);
+
+            if (newMaterialPk !== materialPk) {
+                // Presentation started, stopped, or switched materials —
+                // reset to following the teacher's current position.
+                materialPk = newMaterialPk;
                 following = true;
-                render();
-            });
-
-            function applyStatus(statusEl) {
-                var newMaterialPk = statusEl.dataset.materialPk || null;
-                var rawIndex = statusEl.dataset.liveIndex;
-                var newLiveIndex = (rawIndex === '' || rawIndex === undefined) ? null : parseInt(rawIndex, 10);
-
-                if (newMaterialPk !== materialPk) {
-                    // Presentation started, stopped, or switched materials —
-                    // reset to following the teacher's current position.
-                    materialPk = newMaterialPk;
-                    following = true;
-                }
-                liveIndex = newLiveIndex;
-                if (following) {
-                    currentIndex = liveIndex;
-                }
-                render();
             }
+            liveIndex = newLiveIndex;
+            if (following) {
+                currentIndex = liveIndex;
+            }
+            render();
+        }
 
-            // htmx replaces #live-status wholesale on each poll (outerHTML
-            // self-swap) — react to that instead of polling the DOM ourselves.
-            document.body.addEventListener('htmx:afterSwap', function (evt) {
-                if (evt.detail.target && evt.detail.target.id === 'live-status') {
-                    applyStatus(evt.detail.target);
-                }
+        // htmx replaces #live-status wholesale on each poll (outerHTML
+        // self-swap) — react to that instead of polling the DOM ourselves.
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            if (evt.detail.target && evt.detail.target.id === 'live-status') {
+                applyStatus(evt.detail.target);
+            }
+        });
+
+        applyStatus(document.getElementById('live-status'));
+    })();
+
+    // Tabs: plain class/hidden toggling, no library — same pattern as the
+    // slideshow state machine above.
+    (function () {
+        var tabs = document.querySelectorAll('.lecture-panel__tab');
+        var panes = document.querySelectorAll('.lecture-panel__pane');
+        tabs.forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                tabs.forEach(function (t) {
+                    t.classList.remove('is-active');
+                    t.setAttribute('aria-selected', 'false');
+                });
+                panes.forEach(function (pane) { pane.hidden = true; });
+                tab.classList.add('is-active');
+                tab.setAttribute('aria-selected', 'true');
+                document.querySelector('.lecture-panel__pane[data-pane="' + tab.dataset.pane + '"]').hidden = false;
             });
-
-            applyStatus(document.getElementById('live-status'));
-        })();
-    </script>
-</section>
-
-<section id="lecture-outline">
-    <h2>Lecture outline</h2>
-    {% if workspace.lecture_outline %}
-        <div>{{ workspace.lecture_outline|linebreaksbr }}</div>
-    {% else %}
-        <p><em>Your teacher hasn't generated a lecture outline yet.</em></p>
-    {% endif %}
-</section>
-{% endif %}
-
+        });
+    })();
+</script>
+{% else %}
 <div id="message-list" class="chat-window">
     {% include 'workspaces/partials/_messages.html' %}
 </div>
 
 <form
+    class="chat-send-form"
     hx-post="{% url 'send_message' %}"
     hx-target="#message-list"
     hx-swap="beforeend"
     hx-on="htmx:afterRequest: this.reset()"
 >
     {% csrf_token %}
-    <input type="text" name="message" placeholder="Ask a question..." required autocomplete="off">
-    <button type="submit">Send</button>
+    <input type="text" name="message" class="form-input" placeholder="Ask a question..." required autocomplete="off">
+    <button type="submit" class="btn btn-primary">Send</button>
 </form>
+{% endif %}
 {% endblock %}
