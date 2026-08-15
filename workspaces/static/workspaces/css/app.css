@@ -684,6 +684,51 @@ button, input, select, textarea {
    source: `.page-header` and `.empty-state` are generic enough to reuse on
    the next unstyled app page (workspace detail/dashboard), not one-offs.
    -------------------------------------------------------------------------- */
+/* Positioning context for the two decorative blobs below, nothing else.
+   `z-index: 0` (not just `position: relative`) is load-bearing — it makes
+   this element establish its own stacking context, so the blobs'
+   `z-index: -1` is scoped to sit behind THIS page's own content only,
+   instead of resolving against the whole document's root stacking context
+   (which risks a negative-z-index element slipping behind unrelated
+   ancestors, e.g. the site header). */
+.workspace-page {
+  position: relative;
+  z-index: 0;
+}
+
+/* A restrained echo of the homepage/auth-hero blob art (same two vendored
+   SVG assets, see .hero__blob above and its sourcing notes) rather than a
+   full hero treatment — this is a working dashboard, not a marketing page,
+   so these stay small and mostly off-page. Unlike .hero__art/.auth-hero__art
+   (which bleed all the way to the true viewport edge — a deliberate full-
+   width statement), these are anchored to .workspace-page's own corners and
+   nudged just past them, so only a sliver actually shows past the page
+   gutter, more "peeking in" than "laid over the page." One tucks into the
+   top-right corner (echoing .hero__art's right-side placement), the other
+   bottom-left (echoing .auth-hero__art's left-side placement) — a small nod
+   to this being the first screen past login, bridging both halves of the
+   site's visual language. Pushed behind the real content (z-index: -1) and
+   hidden on mobile below, same as both of those. */
+.workspace-page__blob {
+  position: absolute;
+  z-index: -1;
+  display: block;
+  height: auto;
+  pointer-events: none;
+}
+
+.workspace-page__blob--top {
+  width: clamp(70px, 7vw, 120px);
+  top: -28px;
+  right: -28px;
+}
+
+.workspace-page__blob--bottom {
+  width: clamp(80px, 8vw, 140px);
+  bottom: -28px;
+  left: -28px;
+}
+
 .page-header {
   display: flex;
   align-items: flex-start;
@@ -1047,5 +1092,9 @@ button, input, select, textarea {
 
   .page-header .btn-primary {
     width: 100%;
+  }
+
+  .workspace-page__blob {
+    display: none;
   }
 }
