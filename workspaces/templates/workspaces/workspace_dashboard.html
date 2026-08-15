@@ -3,76 +3,118 @@
 {% block title %}{{ workspace.name }} — Dashboard{% endblock %}
 
 {% block content %}
-<p><a href="{% url 'workspace_detail' pk=workspace.pk %}">&larr; {{ workspace.name }}</a></p>
+<a href="{% url 'workspace_detail' pk=workspace.pk %}" class="back-link">&larr; {{ workspace.name }}</a>
 
-<h1>{{ workspace.name }} — Dashboard</h1>
+<div class="workspace-detail-header">
+    <div class="workspace-detail-header__title">
+        <h1>{{ workspace.name }}</h1>
+        <span class="badge badge--{{ workspace.mode }}">{{ workspace.get_mode_display }}</span>
+    </div>
+</div>
 
-<h2>Students</h2>
-<p><em>"Messages sent" excludes filler-only messages (e.g. just "thanks" or "ok") — it counts messages with at least one substantive word.</em></p>
-{% if student_sessions %}
-<table>
-    <thead>
-        <tr>
-            <th>Student</th>
-            <th>Messages sent</th>
-            <th>Joined</th>
-            <th></th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for session in student_sessions %}
-        <tr>
-            <td>{{ session.display_name }}</td>
-            <td>{{ session.message_count }}</td>
-            <td>{{ session.joined_at|date:"M j, Y g:i A" }}</td>
-            <td><a href="{% url 'session_transcript' pk=workspace.pk session_pk=session.pk %}">View transcript</a></td>
-            <td>
-                <form method="post" action="{% url 'student_remove' pk=workspace.pk session_pk=session.pk %}" onsubmit="return confirm('Remove {{ session.display_name }} from this workspace? This deletes their transcript and cannot be undone.');">
-                    {% csrf_token %}
-                    <button type="submit">Remove</button>
-                </form>
-            </td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<p>No students have joined this workspace yet.</p>
-{% endif %}
+<div class="stat-cards">
+    <div class="stat-card">
+        <div class="stat-card__value">{{ student_count }}</div>
+        <div class="stat-card__label">Students joined</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card__value">{{ total_messages }}</div>
+        <div class="stat-card__label">Messages sent</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card__value">{{ open_flags_count }}</div>
+        <div class="stat-card__label">Open flags</div>
+    </div>
+</div>
 
-<h2>Commonly asked words</h2>
-{% if keywords %}
-<ol>
-    {% for word, count in keywords %}
-    <li>{{ word }} ({{ count }})</li>
-    {% endfor %}
-</ol>
-{% else %}
-<p>Not enough student messages yet to show common words.</p>
-{% endif %}
+<div class="dashboard-section">
+    <h2>Students</h2>
+    <p class="dashboard-section__subtext">"Messages sent" excludes filler-only messages (e.g. just "thanks" or "ok") — it counts messages with at least one substantive word.</p>
 
-<h2>Flagged messages</h2>
-<p><em>Messages auto-flagged for phrasing that resembles a jailbreak attempt (e.g. "ignore your instructions"). This is a detection signal for review, not proof the AI complied — it structurally can't, regardless of phrasing.</em></p>
-{% if flags %}
-<table>
-    <thead>
-        <tr>
-            <th>Student</th>
-            <th>Matched phrase</th>
-            <th>Message</th>
-            <th>Flagged</th>
-            <th></th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for flag in flags %}
-        {% include 'workspaces/partials/_flag_row.html' %}
-    {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<p>No flagged messages.</p>
-{% endif %}
+    {% if student_sessions %}
+    <div class="scrollable-table-wrap">
+        <table class="material-table">
+            <thead>
+                <tr>
+                    <th>Student</th>
+                    <th>Messages sent</th>
+                    <th>Joined</th>
+                    <th class="material-table__actions-col"><span class="sr-only">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for session in student_sessions %}
+                <tr>
+                    <td>{{ session.display_name }}</td>
+                    <td>{{ session.message_count }}</td>
+                    <td>{{ session.joined_at|date:"M j, Y g:i A" }}</td>
+                    <td class="material-table__actions-col">
+                        <div class="table-actions">
+                            <a href="{% url 'session_transcript' pk=workspace.pk session_pk=session.pk %}" class="table-link">View transcript</a>
+                            <form method="post" action="{% url 'student_remove' pk=workspace.pk session_pk=session.pk %}" onsubmit="return confirm('Remove {{ session.display_name }} from this workspace? This deletes their transcript and cannot be undone.');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No students have joined this workspace yet.</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="dashboard-section">
+    <h2>Commonly asked words</h2>
+    {% if keywords %}
+    <div class="keyword-bars">
+        {% for word, count in keywords %}
+        <div class="keyword-bar">
+            <span class="keyword-bar__label">{{ word }}</span>
+            <span class="keyword-bar__fill" style="width: {% widthratio count keywords.0.1 100 %}%;"></span>
+            <span class="keyword-bar__count">{{ count }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>Not enough student messages yet to show common words.</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="dashboard-section">
+    <h2>Flagged messages</h2>
+    <p class="dashboard-section__subtext">Messages auto-flagged for phrasing that resembles a jailbreak attempt (e.g. "ignore your instructions"). This is a detection signal for review, not proof the AI complied — it structurally can't, regardless of phrasing.</p>
+
+    {% if flags %}
+    <div class="material-table-wrap">
+        <table class="material-table">
+            <thead>
+                <tr>
+                    <th>Student</th>
+                    <th>Matched phrase</th>
+                    <th>Message</th>
+                    <th>Flagged</th>
+                    <th class="material-table__actions-col"><span class="sr-only">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for flag in flags %}
+                {% include 'workspaces/partials/_flag_row.html' %}
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No flagged messages.</p>
+    </div>
+    {% endif %}
+</div>
 {% endblock %}

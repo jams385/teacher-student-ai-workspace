@@ -109,7 +109,13 @@ class MaterialUploadForm(forms.Form):
     PDF_CONTENT_TYPE = 'application/pdf'
     PPTX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 
-    file = forms.FileField(label='Course material (PDF or PowerPoint)')
+    file = forms.FileField(
+        label='Course material (PDF or PowerPoint)',
+        # sr-only (not the field itself hidden from validation/submission,
+        # just visually hidden) — the dropzone label it sits inside is the
+        # visible/clickable surface, see workspace_detail.html.
+        widget=forms.ClearableFileInput(attrs={'class': 'sr-only', 'id': 'material-upload-input'}),
+    )
 
     def clean_file(self):
         uploaded_file = self.cleaned_data['file']

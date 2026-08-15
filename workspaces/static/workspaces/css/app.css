@@ -210,6 +210,7 @@ button, input, select, textarea {
   padding: var(--space-3) var(--space-5);
   cursor: pointer;
   text-decoration: none;
+  white-space: nowrap;
   transition: background-color .15s ease, border-color .15s ease, color .15s ease;
 }
 
@@ -248,6 +249,15 @@ button, input, select, textarea {
 .btn-sm {
   padding: var(--space-2) var(--space-4);
   font-size: var(--font-size-sm);
+}
+
+/* Generic across every .btn variant — first real user is the live
+   slideshow's Prev/Next (disabled at the first/last slide), but also
+   quietly improves the upload button's existing disabled-during-upload
+   JS state for free. */
+.btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
 }
 
 /* --------------------------------------------------------------------------
@@ -842,6 +852,21 @@ button, input, select, textarea {
   color: var(--color-error-text);
 }
 
+/* Generic (non-mode) success/error modifiers, same shape as the mode
+   badges above — used by workspace_detail.html's "text extracted" column,
+   where the color means yes/no rather than socratic/homework/lecture. */
+.badge--success {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
+}
+
+.badge--error {
+  background: var(--color-error-bg);
+  border-color: var(--color-error-border);
+  color: var(--color-error-text);
+}
+
 /* Join code row, pinned to the bottom of the card via margin-top:auto so
    cards with shorter names still line up along the same baseline in a grid
    row. `<code>` is left to the browser's own UA monospace stack rather than
@@ -1069,12 +1094,16 @@ button, input, select, textarea {
 }
 
 /* --------------------------------------------------------------------------
-   Teacher account settings
+   Teacher + student account settings
    Not from Figma — plain utility pages, deliberately kept quieter than the
    workspace list/creation screens above (no .workspace-page blob art here;
    this is account admin, not a screen meant to draw the eye). Reuses
    .page-header/.card/.form-field/.btn as-is; only .settings-section,
-   .btn-danger, and .back-link below are new.
+   .btn-danger, and .back-link below are new. Originally built for the
+   teacher's settings hub; student_settings.html reuses the same rows
+   loosely rather than pixel-matching it — it has a 3rd action (clear
+   account data) the teacher page doesn't, shaped as a row+table via
+   .settings-section--stacked below instead of a plain row+button.
    -------------------------------------------------------------------------- */
 .settings-section {
   display: flex;
@@ -1089,6 +1118,29 @@ button, input, select, textarea {
 
 .settings-section + .settings-section {
   margin-top: var(--space-4);
+}
+
+/* For a section whose content isn't a single button — student_settings.html's
+   "clear account data" table of joined workspaces, one per row, each with
+   its own action, so the usual row+single-button layout doesn't fit. */
+.settings-section--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.settings-section--stacked .material-table-wrap,
+.settings-section--stacked .empty-state {
+  margin-top: var(--space-4);
+}
+
+/* .material-table's 560px min-width (see Workspace detail below) is sized
+   for its original 4-column table — overkill here, where there are only
+   two (workspace name, one action) and both fit comfortably under 390px.
+   Without this override, this table would force a horizontal scrollbar
+   on every phone-width screen for no reason, hiding "Clear data" off the
+   right edge with no visual hint it's there to scroll to. */
+.settings-section--stacked .material-table {
+  min-width: 0;
 }
 
 .settings-section__text h2 {
@@ -1136,6 +1188,480 @@ button, input, select, textarea {
 
 .back-link:hover {
   text-decoration: underline;
+}
+
+/* --------------------------------------------------------------------------
+   Workspace detail
+   Reference mockup, not Figma. Raw CSS the mockup shipped with used a
+   4px table border and an absolutely-positioned upload widget; both
+   loosened here to fit this app's usual 1-2px border weight and a
+   responsive flex/grid layout instead of fixed px coordinates. Reuses
+   .back-link/.badge/.btn/.btn-secondary/.sr-only as-is; everything below
+   is new.
+   -------------------------------------------------------------------------- */
+.workspace-detail-header {
+  margin-bottom: var(--space-6);
+}
+
+.workspace-detail-header__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.workspace-detail-header__title h1 {
+  margin: 0;
+}
+
+.workspace-detail-header__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+}
+
+.workspace-detail-header__meta code {
+  background: var(--color-gray-100);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: .05em;
+  color: var(--color-black);
+}
+
+.workspace-detail-header__divider {
+  color: var(--color-gray-200);
+}
+
+.workspace-detail-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.workspace-detail-section {
+  margin-top: var(--space-7);
+}
+
+.workspace-detail-section h2 {
+  font-size: var(--font-size-md);
+}
+
+.workspace-detail-section__subtext {
+  margin-top: var(--space-1);
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+}
+
+/* Horizontal scroll on the wrapper (not the table itself) keeps a
+   many-column or long-filename table from ever forcing the whole page to
+   scroll sideways on narrow viewports — the border/radius live here too
+   so rounded corners still clip correctly when scrolled. */
+.material-table-wrap {
+  margin-top: var(--space-4);
+  overflow-x: auto;
+  /* Without this, Chromium leaks this box's internal scrollable width into
+     document.documentElement.scrollWidth once the table is actually wider
+     than the wrapper (e.g. a long filename) — even though the overflow is
+     already visually clipped/scrolled correctly right here. contain:paint
+     scopes it for real, so a long filename never causes page-level
+     horizontal scroll, only this table's own scrollbar. */
+  contain: paint;
+  border: 2px solid var(--color-accent-dark);
+  border-radius: var(--radius-card);
+}
+
+/* min-width, not a bare width:100%, is what actually makes the wrapper's
+   overflow-x:auto do something on a narrow viewport — width:100% instead
+   would just squeeze every column down to fit, wrapping filenames one
+   character per line rather than scrolling. */
+.material-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.material-table th {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  border-bottom: 2px solid var(--color-accent-dark);
+  white-space: nowrap;
+}
+
+.material-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-gray-200);
+  vertical-align: middle;
+}
+
+.material-table tr:last-child td {
+  border-bottom: none;
+}
+
+.material-table__file {
+  white-space: nowrap;
+}
+
+.material-table__actions-col {
+  width: 1%;
+  text-align: right;
+}
+
+/* Small square icon-only button — the material table's delete action and
+   any future row-level icon action. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-accent-dark);
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.icon-btn:hover {
+  background: var(--color-gray-100);
+}
+
+.icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-light) 40%, transparent);
+}
+
+.icon-btn--danger:hover {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+}
+
+.icon-btn--danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-text) 35%, transparent);
+}
+
+/* The dropzone is a single <label> wrapping a visually-hidden (.sr-only,
+   not display:none) real file input, so clicking anywhere in it — not
+   just the "Browse file" chip — opens the native file picker with no JS.
+   JS is only added (see workspace_detail.html) for the two things a plain
+   label+input can't do: highlighting on real drag-and-drop, and echoing
+   back the chosen filename. */
+.upload-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-7) var(--space-5);
+  border: 1px dashed var(--color-accent-dark);
+  border-radius: var(--radius-card);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone--dragover {
+  border-color: var(--color-primary-light-border);
+  background: color-mix(in srgb, var(--color-primary-light) 8%, transparent);
+}
+
+.upload-dropzone__icon {
+  width: 32px;
+  height: 32px;
+  color: var(--color-accent-dark);
+}
+
+.upload-dropzone__label {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+}
+
+.upload-dropzone__hint {
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+}
+
+.upload-dropzone .btn {
+  margin-top: var(--space-2);
+  /* Purely decorative inside the label — the label itself is the click
+     target, so this never needs its own pointer-events. */
+  pointer-events: none;
+}
+
+/* Covers both the upload button (after .upload-dropzone) and the lecture
+   outline's generate/regenerate button (after its .card or empty-state) —
+   any section-level submit button gets breathing room from whatever's
+   above it without each form needing its own margin utility. */
+.workspace-detail-section .btn {
+  margin-top: var(--space-4);
+}
+
+/* .card alone (see the shared Card section above) has no border — fine
+   where it wraps bordered form inputs elsewhere, but the live-slideshow
+   presenter widget and the generated outline text have no inputs of their
+   own, so with no border a .card is invisible against this page's white
+   background. Scoped to this page only, rather than changing .card
+   globally for every other page that already reads fine as-is. */
+.workspace-detail-section .card {
+  margin-top: var(--space-3);
+  border: 1px solid var(--color-gray-200);
+}
+
+.workspace-detail-section .empty-state {
+  margin-top: var(--space-3);
+}
+
+/* --------------------------------------------------------------------------
+   Teacher dashboard
+   Reference mockup, not Figma. Reuses .workspace-detail-header (just the
+   __title part — no join code/actions row on this page, that lives on the
+   workspace detail page) and .back-link/.material-table/.badge/.empty-state
+   as-is. Deliberately its OWN section-heading class (.dashboard-section)
+   rather than reusing .workspace-detail-section — that one carries page-
+   scoped .btn/.card rules (margin-top, a border) that would leak onto this
+   page's table-cell "Remove" buttons in ways that don't apply here.
+   -------------------------------------------------------------------------- */
+.dashboard-section {
+  margin-top: var(--space-7);
+}
+
+.dashboard-section h2 {
+  font-size: var(--font-size-md);
+}
+
+.dashboard-section__subtext {
+  margin-top: var(--space-1);
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+  max-width: 70ch;
+}
+
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.stat-card {
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
+  /* A soft tint of the brand amber, not --color-gray-100 — ties these
+     cards to the existing palette instead of reading as plain neutral
+     boxes, without introducing a new hardcoded hex. */
+  background: color-mix(in srgb, var(--color-primary-light) 12%, var(--color-white));
+  text-align: center;
+}
+
+.stat-card__value {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-extrabold);
+}
+
+.stat-card__label {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--color-accent-dark);
+}
+
+/* Understated link treatment for in-table actions ("View transcript",
+   "Mark reviewed") — plain browser blue-underline reads too loud repeated
+   down a column. Applied to both <a> and <button> (Mark reviewed is a
+   form submit, not a real link), hence the button-reset properties. */
+.table-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-label-accent);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.table-link:hover {
+  text-decoration: underline;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* Students table: same bordered look as .material-table-wrap, but capped
+   to a fixed height with its own vertical scrollbar (plus a sticky header
+   row) instead of an uncapped table or a separate paginated "view all"
+   page — this workspace's full student list stays one scroll away without
+   growing the page itself. contain:paint for the same reason
+   .material-table-wrap needs it: without it, Chromium leaks this box's
+   scrollable height into document.documentElement.scrollHeight even
+   though the overflow is already clipped/scrolled right here. */
+.scrollable-table-wrap {
+  margin-top: var(--space-4);
+  max-height: 320px;
+  overflow: auto;
+  contain: paint;
+  border: 2px solid var(--color-accent-dark);
+  border-radius: var(--radius-card);
+}
+
+.scrollable-table-wrap .material-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-white);
+}
+
+/* Commonly asked words: a plain word/count list rendered as horizontal
+   bars, width per bar computed server-side via {% widthratio %} against
+   the top count (keywords is already sorted most-common-first) — no JS,
+   no chart library. */
+.keyword-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.keyword-bar {
+  display: grid;
+  grid-template-columns: minmax(100px, 200px) 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.keyword-bar__label {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+}
+
+.keyword-bar__fill {
+  display: block;
+  height: 10px;
+  min-width: 4px;
+  background: var(--color-label-accent);
+  border-radius: 999px;
+}
+
+.keyword-bar__count {
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-dark);
+  text-align: right;
+}
+
+/* Flagged messages: the message text column can run long, so it's capped
+   rather than left to stretch the whole table wide for one long row. */
+.flag-row__message {
+  max-width: 360px;
+}
+
+/* Quietly recede an already-reviewed flag so the ones still needing a
+   look stay visually first — not in the mockup, but serves the section's
+   own stated point (surfacing what needs review) for free. */
+.flag-reviewed {
+  opacity: .6;
+}
+
+.flag-row__reviewed-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-dark);
+}
+
+/* --------------------------------------------------------------------------
+   Chat transcript
+   Reference mockup, not Figma. Styles _message.html/_messages.html — the
+   chat-bubble partial shared by THREE templates, not just the teacher's
+   session_transcript.html this mockup is actually of: also
+   student_workspace_transcript.html (a student's own read-only transcript)
+   and chat.html (the live, actively-used chat interface itself, where
+   htmx appends new bubbles into this same #message-list via
+   hx-swap="beforeend"). Restyling the shared partial means the bubbles
+   look right everywhere at once, including live chat — but chat.html's
+   own page shell (header, slideshow controls, the send-message form) is
+   untouched and still fully unstyled, so that page will look like a nice
+   bubble list sitting in an otherwise plain page until it gets its own
+   pass. Only session_transcript.html's page shell was rebuilt to match
+   the mockup (.back-link/.page-header, both reused as-is); the other two
+   templates got the one-line `chat-window` class addition needed for
+   their shared #message-list to render correctly, nothing more.
+   -------------------------------------------------------------------------- */
+.chat-window {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
+  /* Same soft amber tint as .stat-card — ties this "conversation surface"
+     to the same palette rather than plain white or gray. */
+  background: color-mix(in srgb, var(--color-primary-light) 8%, var(--color-white));
+}
+
+.chat-message {
+  max-width: 65%;
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+}
+
+.chat-message-student {
+  align-self: flex-end;
+  background: var(--color-white);
+  border: 1px solid var(--color-primary-light-border);
+}
+
+.chat-message-ai {
+  align-self: flex-start;
+  background: var(--color-gray-100);
+}
+
+.chat-message-error {
+  align-self: center;
+  max-width: 80%;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-text);
+  text-align: center;
+}
+
+.chat-message-author {
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--space-1);
+}
+
+/* Only the teacher's transcript view ever renders this (show_flags=False
+   for a student's own transcript — see session_transcript). One .badge
+   pill per flag, not one pill listing every match, since a message can
+   trip more than one phrase. */
+.chat-message-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 /* --------------------------------------------------------------------------
@@ -1338,5 +1864,17 @@ button, input, select, textarea {
 
   .settings-section .btn {
     width: 100%;
+  }
+
+  .workspace-detail-header__actions .btn {
+    width: 100%;
+  }
+
+  .upload-dropzone {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .chat-message {
+    max-width: 90%;
   }
 }

@@ -489,7 +489,11 @@ def workspace_dashboard(request, pk):
             1 for text in texts_by_session.get(session.id, []) if has_meaningful_content(text)
         )
 
-    flags = (
+    # list(), not a bare queryset — open_flags_count below counts unreviewed
+    # ones in Python off this same list rather than firing a second
+    # .filter(reviewed=False).count() query for what the template already
+    # has to fetch and iterate anyway.
+    flags = list(
         Flag.objects.filter(message__workspace=workspace)
         .select_related('message', 'message__student_session')
         .order_by('reviewed', '-created_at')
@@ -498,7 +502,13 @@ def workspace_dashboard(request, pk):
     return render(request, 'workspaces/workspace_dashboard.html', {
         'workspace': workspace,
         'student_sessions': student_sessions,
-        'keywords': keyword_frequency(student_message_texts),
+        'student_count': len(student_sessions),
+        'total_messages': sum(session.message_count for session in student_sessions),
+        'open_flags_count': sum(1 for flag in flags if not flag.reviewed),
+        # top_n=10, not keyword_frequency's own default of 20 — the
+        # dashboard's bar chart reads better short; the 20-word cap is
+        # still keyword_frequency's own default for any other caller.
+        'keywords': keyword_frequency(student_message_texts, top_n=10),
         'flags': flags,
     })
 

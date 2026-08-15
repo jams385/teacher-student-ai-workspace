@@ -3,42 +3,63 @@
 {% block title %}Account settings{% endblock %}
 
 {% block content %}
-<h1>Account settings</h1>
-<p>Signed in as {{ user.username }}</p>
+<div class="page-header">
+    <div>
+        <h1>Account settings</h1>
+        <p class="page-header__subtext">Signed in as {{ user.username }}</p>
+    </div>
+</div>
 
-<h2>Change password</h2>
-<p><a href="{% url 'student_change_password' %}">Change your password</a></p>
+<div class="settings-section">
+    <div class="settings-section__text">
+        <h2>Change password</h2>
+        <p>Update the password you use to log in.</p>
+    </div>
+    <a href="{% url 'student_change_password' %}" class="btn btn-secondary">Change password</a>
+</div>
 
-<h2>Clear account data</h2>
-<p>Clears your chat history in a workspace, but keeps you joined and keeps your login.</p>
-{% if student_sessions %}
-<table>
-    <thead>
-        <tr>
-            <th>Workspace</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for session in student_sessions %}
-        <tr>
-            <td>{{ session.workspace.name }}</td>
-            <td>
-                <form method="post" action="{% url 'student_clear_data' pk=session.workspace.pk %}"
-                      onsubmit="return confirm('Clear your chat history in {{ session.workspace.name }}? This cannot be undone.');">
-                    {% csrf_token %}
-                    <button type="submit">Clear data</button>
-                </form>
-            </td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<p>You haven't joined any workspaces yet.</p>
-{% endif %}
+<div class="settings-section settings-section--stacked">
+    <div class="settings-section__text">
+        <h2>Clear account data</h2>
+        <p>Clears your chat history in a workspace, but keeps you joined and keeps your login.</p>
+    </div>
 
-<h2>Delete account</h2>
-<p>Deletes your login. Does not delete your chat history — teachers can still see it. Use "Clear account data" above first if you want that gone too.</p>
-<p><a href="{% url 'student_delete_account' %}">Delete account</a></p>
+    {% if student_sessions %}
+    <div class="material-table-wrap">
+        <table class="material-table">
+            <thead>
+                <tr>
+                    <th>Workspace</th>
+                    <th class="material-table__actions-col"><span class="sr-only">Clear data</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for session in student_sessions %}
+                <tr>
+                    <td>{{ session.workspace.name }}</td>
+                    <td class="material-table__actions-col">
+                        <form method="post" action="{% url 'student_clear_data' pk=session.workspace.pk %}" onsubmit="return confirm('Clear your chat history in {{ session.workspace.name }}? This cannot be undone.');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger btn-sm">Clear data</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>You haven't joined any workspaces yet.</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="settings-section settings-section--danger">
+    <div class="settings-section__text">
+        <h2>Delete account</h2>
+        <p>Deletes your login. Does not delete your chat history — teachers can still see it. Use "Clear account data" above first if you want that gone too.</p>
+    </div>
+    <a href="{% url 'student_delete_account' %}" class="btn btn-danger">Delete account</a>
+</div>
 {% endblock %}

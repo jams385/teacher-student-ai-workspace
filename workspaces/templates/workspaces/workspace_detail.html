@@ -3,59 +3,193 @@
 {% block title %}{{ workspace.name }}{% endblock %}
 
 {% block content %}
-<p><a href="{% url 'workspace_list' %}">&larr; Your workspaces</a></p>
+<a href="{% url 'workspace_list' %}" class="back-link">&larr; Your workspaces</a>
 
-<h1>{{ workspace.name }}</h1>
-<p>Mode: {{ workspace.get_mode_display }}</p>
-<p>Join code: <code>{{ workspace.join_code }}</code></p>
-<p><a href="{% url 'workspace_dashboard' pk=workspace.pk %}">View dashboard &rarr;</a></p>
+<div class="workspace-detail-header">
+    <div class="workspace-detail-header__title">
+        <h1>{{ workspace.name }}</h1>
+        <span class="badge badge--{{ workspace.mode }}">{{ workspace.get_mode_display }}</span>
+    </div>
+    <p class="workspace-detail-header__meta">
+        Join code: <code>{{ workspace.join_code }}</code>
+        <button type="button" class="workspace-card__copy" data-copy-text="{{ workspace.join_code }}">Copy</button>
+        <span class="workspace-detail-header__divider" aria-hidden="true">|</span>
+        Created {{ workspace.created_at|date:"M j, Y" }}
+    </p>
+    <div class="workspace-detail-header__actions">
+        <a href="{% url 'workspace_dashboard' pk=workspace.pk %}" class="btn btn-secondary">View dashboard &rarr;</a>
+    </div>
+</div>
 
-<h2>Course materials</h2>
-{% if materials %}
-<table>
-    <thead>
-        <tr>
-            <th>File</th>
-            <th>Text extracted</th>
-            <th>Uploaded</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for material in materials %}
-        <tr>
-            <td>{{ material.file }}</td>
-            <td>{% if material.extracted_text %}Yes{% else %}No{% endif %}</td>
-            <td>{{ material.uploaded_at|date:"M j, Y" }}</td>
-            <td>
-                <form method="post" action="{% url 'material_delete' pk=workspace.pk material_pk=material.pk %}" onsubmit="return confirm('Delete this material? This cannot be undone.');">
-                    {% csrf_token %}
-                    <button type="submit">Delete</button>
-                </form>
-            </td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<p>No course materials uploaded yet.</p>
+<div class="workspace-detail-section">
+    <h2>Course material</h2>
+    <p class="workspace-detail-section__subtext">Used as source material for AI responses in this workspace.</p>
+
+    {% if materials %}
+    <div class="material-table-wrap">
+        <table class="material-table">
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Text extracted</th>
+                    <th>Uploaded</th>
+                    <th class="material-table__actions-col"><span class="sr-only">Delete</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for material in materials %}
+                <tr>
+                    <td class="material-table__file">{{ material.file }}</td>
+                    <td>
+                        {% if material.extracted_text %}
+                        <span class="badge badge--success">Yes</span>
+                        {% else %}
+                        <span class="badge badge--error">No</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ material.uploaded_at|date:"M j, Y" }}</td>
+                    <td class="material-table__actions-col">
+                        <form method="post" action="{% url 'material_delete' pk=workspace.pk material_pk=material.pk %}" onsubmit="return confirm('Delete this material? This cannot be undone.');">
+                            {% csrf_token %}
+                            <button type="submit" class="icon-btn icon-btn--danger" aria-label="Delete {{ material.file }}" title="Delete">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <polyline points="4 7 20 7"></polyline>
+                                    <path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"></path>
+                                    <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"></path>
+                                    <path d="M10 11v6"></path>
+                                    <path d="M14 11v6"></path>
+                                </svg>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No course materials uploaded yet.</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="workspace-detail-section">
+    <h2>Upload a new file</h2>
+    <p class="workspace-detail-section__subtext">Select and upload the files of your choice.</p>
+
+    <form method="post" enctype="multipart/form-data" id="material-upload-form">
+        {% csrf_token %}
+        <label for="{{ form.file.id_for_label }}" class="upload-dropzone" id="upload-dropzone">
+            <svg class="upload-dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M16 16l-4-4-4 4"></path>
+                <path d="M12 12v9"></path>
+                <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
+            </svg>
+            <span class="upload-dropzone__label" id="upload-dropzone-label">Choose a file or drag &amp; drop it here</span>
+            <span class="upload-dropzone__hint">PDF or PowerPoint (.pptx), up to 20MB</span>
+            <span class="btn btn-secondary btn-sm" aria-hidden="true">Browse file</span>
+            {{ form.file }}
+        </label>
+        {% for error in form.file.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+        <button type="submit" class="btn btn-primary" id="material-upload-button">Upload and extract text</button>
+        <span id="material-upload-status" hidden>Uploading&hellip; this can take a moment for larger files.</span>
+    </form>
+</div>
+
+{% if workspace.mode == 'lecture' %}
+<div class="workspace-detail-section">
+    <h2>Live slideshow</h2>
+    <div class="card" id="presenter">
+        {% include 'workspaces/partials/_presenter.html' %}
+    </div>
+</div>
+
+<div class="workspace-detail-section">
+    <h2>Lecture outline</h2>
+    {% if workspace.lecture_outline %}
+        <p class="workspace-detail-section__subtext">Generated {{ workspace.lecture_outline_generated_at|date:"M j, Y g:i A" }}</p>
+        <div class="card">{{ workspace.lecture_outline|linebreaksbr }}</div>
+    {% else %}
+        <div class="empty-state">
+            <p>No outline generated yet.</p>
+        </div>
+    {% endif %}
+    <form method="post" action="{% url 'generate_lecture_outline' pk=workspace.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary">{% if workspace.lecture_outline %}Regenerate outline{% else %}Generate outline{% endif %}</button>
+    </form>
+</div>
 {% endif %}
 
-<h3>Upload a PDF or PowerPoint</h3>
-<form method="post" enctype="multipart/form-data" id="material-upload-form">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit" id="material-upload-button">Upload</button>
-    <span id="material-upload-status" hidden>Uploading&hellip; this can take a moment for larger files.</span>
-</form>
 <script>
-    // Plain multipart POST + full page reload (not HTMX, matching this
-    // page's convention — see generate_lecture_outline in views.py), so
-    // extraction + the Supabase upload can take a few seconds with no
-    // visual feedback otherwise. This just disables the button and shows
-    // a status message immediately on submit; the eventual redirect/reload
-    // is what actually clears it.
     (function () {
+        // Copy-to-clipboard for the join code, same pattern as
+        // workspace_list.html's card grid, just a single button here so no
+        // event delegation is needed.
+        var copyButton = document.querySelector('.workspace-detail-header__meta .workspace-card__copy');
+        if (copyButton) {
+            copyButton.addEventListener('click', function () {
+                var code = copyButton.dataset.copyText;
+                var originalLabel = copyButton.textContent;
+                navigator.clipboard.writeText(code).then(function () {
+                    copyButton.textContent = 'Copied!';
+                    setTimeout(function () { copyButton.textContent = originalLabel; }, 1500);
+                }).catch(function () {
+                    // Clipboard access can fail (insecure context, denied
+                    // permission, etc.) — the code is still right there to
+                    // copy by hand, so just leave the button as-is.
+                });
+            });
+        }
+
+        // Upload dropzone: the <label>+sr-only-<input> pair already gives
+        // click-anywhere-to-browse for free with zero JS (see app.css).
+        // Everything below only adds what a plain label+input can't do on
+        // its own — a visual state for real drag-and-drop, and echoing
+        // back the chosen filename so picking a file feels confirmed.
+        var dropzone = document.getElementById('upload-dropzone');
+        var dropzoneLabel = document.getElementById('upload-dropzone-label');
+        var fileInput = document.getElementById('{{ form.file.id_for_label }}');
+        var defaultLabelText = dropzoneLabel ? dropzoneLabel.textContent : '';
+
+        if (dropzone && fileInput) {
+            ['dragenter', 'dragover'].forEach(function (eventName) {
+                dropzone.addEventListener(eventName, function (event) {
+                    event.preventDefault();
+                    dropzone.classList.add('upload-dropzone--dragover');
+                });
+            });
+
+            ['dragleave', 'drop'].forEach(function (eventName) {
+                dropzone.addEventListener(eventName, function (event) {
+                    event.preventDefault();
+                    dropzone.classList.remove('upload-dropzone--dragover');
+                });
+            });
+
+            dropzone.addEventListener('drop', function (event) {
+                if (event.dataTransfer && event.dataTransfer.files.length) {
+                    fileInput.files = event.dataTransfer.files;
+                    fileInput.dispatchEvent(new Event('change'));
+                }
+            });
+
+            fileInput.addEventListener('change', function () {
+                if (fileInput.files.length && dropzoneLabel) {
+                    dropzoneLabel.textContent = fileInput.files[0].name;
+                } else if (dropzoneLabel) {
+                    dropzoneLabel.textContent = defaultLabelText;
+                }
+            });
+        }
+
+        // Plain multipart POST + full page reload (not HTMX, matching this
+        // page's convention — see generate_lecture_outline in views.py), so
+        // extraction + the Supabase upload can take a few seconds with no
+        // visual feedback otherwise. This just disables the button and shows
+        // a status message immediately on submit; the eventual redirect/reload
+        // is what actually clears it.
         var form = document.getElementById('material-upload-form');
         var button = document.getElementById('material-upload-button');
         var status = document.getElementById('material-upload-status');
@@ -72,29 +206,10 @@
         window.addEventListener('pageshow', function (event) {
             if (event.persisted) {
                 button.disabled = false;
-                button.textContent = 'Upload';
+                button.textContent = 'Upload and extract text';
                 status.hidden = true;
             }
         });
     })();
 </script>
-
-{% if workspace.mode == 'lecture' %}
-<h2>Live slideshow</h2>
-<section id="presenter">
-    {% include 'workspaces/partials/_presenter.html' %}
-</section>
-
-<h2>Lecture outline</h2>
-{% if workspace.lecture_outline %}
-    <p>Generated {{ workspace.lecture_outline_generated_at|date:"M j, Y g:i A" }}</p>
-    <div>{{ workspace.lecture_outline|linebreaksbr }}</div>
-{% else %}
-    <p>No outline generated yet.</p>
-{% endif %}
-<form method="post" action="{% url 'generate_lecture_outline' pk=workspace.pk %}">
-    {% csrf_token %}
-    <button type="submit">{% if workspace.lecture_outline %}Regenerate outline{% else %}Generate outline{% endif %}</button>
-</form>
-{% endif %}
 {% endblock %}

@@ -1,55 +1,50 @@
 {% if workspace.live_material_id %}
-    <p>Presenting: {{ workspace.live_material.file }}</p>
-    <p>Slide {{ workspace.live_slide_index|add:1 }} of {{ slide_count }}</p>
+    <p class="workspace-detail-section__subtext">Presenting: {{ workspace.live_material.file }} &mdash; slide {{ workspace.live_slide_index|add:1 }} of {{ slide_count }}</p>
     <img
         src="{% url 'slide_image' pk=workspace.pk material_pk=workspace.live_material_id index=workspace.live_slide_index %}"
         alt="Current slide"
-        style="max-width: 100%;"
+        style="max-width: 100%; border-radius: var(--radius-md); margin-top: var(--space-3);"
     >
-    <div>
+    <div style="display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-4);">
         <form
             hx-post="{% url 'presenter_prev' pk=workspace.pk %}"
             hx-target="#presenter"
             hx-swap="innerHTML"
-            style="display: inline;"
         >
             {% csrf_token %}
-            <button type="submit" {% if workspace.live_slide_index == 0 %}disabled{% endif %}>&larr; Prev</button>
+            <button type="submit" class="btn btn-secondary btn-sm" {% if workspace.live_slide_index == 0 %}disabled{% endif %}>&larr; Prev</button>
         </form>
         <form
             hx-post="{% url 'presenter_next' pk=workspace.pk %}"
             hx-target="#presenter"
             hx-swap="innerHTML"
-            style="display: inline;"
         >
             {% csrf_token %}
-            <button type="submit" {% if workspace.live_slide_index|add:1 >= slide_count %}disabled{% endif %}>Next &rarr;</button>
+            <button type="submit" class="btn btn-secondary btn-sm" {% if workspace.live_slide_index|add:1 >= slide_count %}disabled{% endif %}>Next &rarr;</button>
         </form>
         <form
             hx-post="{% url 'stop_presenting' pk=workspace.pk %}"
             hx-target="#presenter"
             hx-swap="innerHTML"
-            style="display: inline;"
         >
             {% csrf_token %}
-            <button type="submit">Stop presenting</button>
+            <button type="submit" class="btn btn-secondary btn-sm">Stop presenting</button>
         </form>
     </div>
 {% else %}
     {% if materials_with_slides %}
-        <p>Choose a material to present live to your students:</p>
-        <ul>
+        <p class="workspace-detail-section__subtext">Choose a material to present live to your students:</p>
+        <ul style="list-style: none; padding: 0; margin: var(--space-3) 0 0; display: flex; flex-direction: column; gap: var(--space-2);">
         {% for material in materials_with_slides %}
-            <li>
-                {{ material.file }}
+            <li style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);">
+                <span>{{ material.file }}</span>
                 <form
                     hx-post="{% url 'present_material' pk=workspace.pk material_pk=material.pk %}"
                     hx-target="#presenter"
                     hx-swap="innerHTML"
-                    style="display: inline;"
                 >
                     {% csrf_token %}
-                    <button type="submit">Present</button>
+                    <button type="submit" class="btn btn-secondary btn-sm">Present</button>
                 </form>
             </li>
         {% endfor %}

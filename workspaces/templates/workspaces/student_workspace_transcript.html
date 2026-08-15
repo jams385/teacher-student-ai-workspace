@@ -3,20 +3,26 @@
 {% block title %}{{ workspace.name }} — Transcript{% endblock %}
 
 {% block content %}
-<p><a href="{% url 'student_home' %}">&larr; My workspaces</a></p>
+<a href="{% url 'student_home' %}" class="back-link">&larr; My workspaces</a>
 
-<h1>{{ workspace.name }}</h1>
-<p>{{ workspace.get_mode_display }} &middot; joined {{ student_session.joined_at|date:"M j, Y g:i A" }}</p>
+<div class="page-header">
+    <div>
+        <h1>{{ workspace.name }}</h1>
+        <p class="page-header__subtext">{{ workspace.get_mode_display }} &middot; joined {{ student_session.joined_at|date:"M j, Y g:i A" }}</p>
+    </div>
+    <form method="post" action="{% url 'student_workspace_continue' pk=workspace.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">Continue chatting</button>
+    </form>
+</div>
 
-<form method="post" action="{% url 'student_workspace_continue' pk=workspace.pk %}">
-    {% csrf_token %}
-    <button type="submit">Continue chatting</button>
-</form>
-
-<div id="message-list">
+{% if chat_messages %}
+<div id="message-list" class="chat-window">
     {% include 'workspaces/partials/_messages.html' %}
 </div>
-{% if not chat_messages %}
-<p><em>No messages yet.</em></p>
+{% else %}
+<div class="empty-state">
+    <p>No messages yet.</p>
+</div>
 {% endif %}
 {% endblock %}
