@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Gabay Mata — AI tutoring, under the teacher's control{% endblock %}
+
+{% block nav %}
+{% include 'workspaces/partials/_public_nav.html' %}
+{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero__copy">
+        <p class="hero__eyebrow">AI tutoring, under the teacher's control</p>
+        <h1>The guiding eye behind your learning AI</h1>
+        <p class="hero__subtext">Gabay Mata is a learning workspace where teachers can curate their own AI for their students to use.</p>
+        <div class="hero__actions">
+            <a href="{% url 'login' %}" class="btn btn-primary">I'm a teacher</a>
+            <a href="{% url 'student_login' %}" class="btn btn-primary">I'm a student</a>
+        </div>
+    </div>
+    <div class="hero__art" aria-hidden="true">
+        <img class="hero__blob hero__blob--large" src="{% static 'workspaces/vendor/hero/hero-blob-large.svg' %}" alt="">
+        <img class="hero__blob hero__blob--small" src="{% static 'workspaces/vendor/hero/hero-blob-small.svg' %}" alt="">
+    </div>
+</section>
+{% endblock %}

@@ -303,15 +303,62 @@ class TeacherChangePasswordTests(TestCase):
         self.assertTrue(self.teacher.check_password('pw'))
 
 
+class TeacherSignupTests(TestCase):
+    """Self-serve teacher signup — username/password plus an optional email
+    and a required consent checkbox (docs/teacher_account_consent_notice.md).
+    The checkbox is real form validation, not just page copy — see
+    forms.TeacherSignupForm."""
+
+    def _valid_data(self, **overrides):
+        data = {
+            'username': 'newteacher', 'password1': 'Abcdef123', 'password2': 'Abcdef123',
+            'email': '', 'agree_to_terms': 'on',
+        }
+        data.update(overrides)
+        return data
+
+    def test_signup_creates_teacher_account_and_logs_in(self):
+        response = self.client.post(reverse('signup'), self._valid_data(), follow=True)
+        self.assertEqual(response.status_code, 200)
+        user = get_user_model().objects.get(username='newteacher')
+        self.assertEqual(user.profile.role, Profile.Role.TEACHER)
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+    def test_signup_without_agreeing_to_terms_is_rejected(self):
+        data = self._valid_data()
+        del data['agree_to_terms']
+        response = self.client.post(reverse('signup'), data)
+        self.assertEqual(response.status_code, 200)  # re-renders the form, no redirect
+        self.assertFalse(get_user_model().objects.filter(username='newteacher').exists())
+
+    def test_signup_saves_optional_email(self):
+        self.client.post(reverse('signup'), self._valid_data(email='teacher@example.com'))
+        user = get_user_model().objects.get(username='newteacher')
+        self.assertEqual(user.email, 'teacher@example.com')
+
+    def test_signup_email_stays_blank_when_omitted(self):
+        self.client.post(reverse('signup'), self._valid_data())
+        user = get_user_model().objects.get(username='newteacher')
+        self.assertEqual(user.email, '')
+
+
 class StudentSignupTests(TestCase):
     """Self-serve student signup — no teacher gating, no code. An account's
     only purpose is a persistent "My Workspaces" list; joining a workspace
-    is still the same join-code flow (see student_join)."""
+    is still the same join-code flow (see student_join). The consent
+    checkbox (docs/student_account_signup_notice.md) is real form
+    validation, not just page copy — see forms.StudentSignupForm."""
+
+    def _valid_data(self, **overrides):
+        data = {
+            'username': 'jamie', 'password1': 'Abcdef123', 'password2': 'Abcdef123',
+            'email': '', 'agree_to_terms': 'on',
+        }
+        data.update(overrides)
+        return data
 
     def test_signup_creates_student_account_and_logs_in(self):
-        response = self.client.post(reverse('student_signup'), {
-            'username': 'jamie', 'password1': 'Abcdef123', 'password2': 'Abcdef123', 'email': '',
-        }, follow=True)
+        response = self.client.post(reverse('student_signup'), self._valid_data(), follow=True)
         self.assertEqual(response.status_code, 200)
         user = get_user_model().objects.get(username='jamie')
         self.assertEqual(user.profile.role, Profile.Role.STUDENT)
@@ -321,13 +368,21 @@ class StudentSignupTests(TestCase):
         response = self.client.get(reverse('student_signup'))
         self.assertNotContains(response, 'name="code"')
 
+    def test_signup_without_agreeing_to_terms_is_rejected(self):
+        data = self._valid_data()
+        del data['agree_to_terms']
+        response = self.client.post(reverse('student_signup'), data)
+        self.assertEqual(response.status_code, 200)  # re-renders the form, no redirect
+        self.assertFalse(get_user_model().objects.filter(username='jamie').exists())
+
+    def test_signup_saves_optional_email(self):
+        self.client.post(reverse('student_signup'), self._valid_data(email='jamie@example.com'))
+        user = get_user_model().objects.get(username='jamie')
+        self.assertEqual(user.email, 'jamie@example.com')
+
     def test_already_logged_in_student_cannot_signup_again(self):
-        self.client.post(reverse('student_signup'), {
-            'username': 'jamie', 'password1': 'Abcdef123', 'password2': 'Abcdef123', 'email': '',
-        })
-        response = self.client.post(reverse('student_signup'), {
-            'username': 'someone_else', 'password1': 'Abcdef123', 'password2': 'Abcdef123', 'email': '',
-        })
+        self.client.post(reverse('student_signup'), self._valid_data())
+        response = self.client.post(reverse('student_signup'), self._valid_data(username='someone_else'))
         self.assertEqual(response.status_code, 302)
         self.assertFalse(get_user_model().objects.filter(username='someone_else').exists())
 
@@ -336,9 +391,7 @@ class StudentSignupTests(TestCase):
         workspace = Workspace.objects.create(
             teacher=teacher, name='Test Class', mode=Workspace.Mode.HOMEWORK, join_code='ABCDEF',
         )
-        self.client.post(reverse('student_signup'), {
-            'username': 'jamie', 'password1': 'Abcdef123', 'password2': 'Abcdef123', 'email': '',
-        })
+        self.client.post(reverse('student_signup'), self._valid_data())
         self.client.post(reverse('student_join'), {'join_code': 'ABCDEF', 'display_name': 'Jamie'})
 
         response = self.client.get(reverse('student_home'))
@@ -920,3 +973,61 @@ class LiveStatusTests(TestCase):
         self._join_as_student()
         response = self.client.get(reverse('live_status'))
         self.assertContains(response, 'slide 3 of 4')
+
+
+class HomeViewTests(TestCase):
+    """`/` is the public landing page — see workspaces.views.home. Its own
+    URL move (workspace_list: '' -> 'workspaces/') is covered implicitly
+    here since every assertion below goes through reverse(), not a
+    hardcoded path."""
+
+    def test_anonymous_visitor_sees_landing_page(self):
+        response = self.client.get(reverse('home'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'workspaces/home.html')
+        self.assertContains(response, "I'm a teacher")
+        self.assertContains(response, "I'm a student")
+
+    def test_teacher_button_links_to_teacher_login(self):
+        response = self.client.get(reverse('home'))
+        self.assertContains(response, f'href="{reverse("login")}"')
+
+    def test_student_button_links_to_student_login(self):
+        response = self.client.get(reverse('home'))
+        self.assertContains(response, f'href="{reverse("student_login")}"')
+
+    def test_nav_shows_logo_and_all_public_links(self):
+        response = self.client.get(reverse('home'))
+        self.assertContains(response, 'vendor/logo/gabay-mata-logo.png')
+        self.assertContains(response, 'alt="Gabay Mata"')
+        # Shared workspaces/partials/_public_nav.html — used by this page
+        # and every other pre-login page (auth pages, join) — always shows
+        # all 5 of these; only the bare "Workspaces" link is dropped, since
+        # it's meaningless to a signed-out visitor.
+        self.assertContains(response, f'href="{reverse("student_join")}"')
+        self.assertContains(response, f'href="{reverse("student_login")}"')
+        self.assertContains(response, f'href="{reverse("student_signup")}"')
+        self.assertContains(response, f'href="{reverse("login")}"')
+        self.assertContains(response, f'href="{reverse("signup")}"')
+        self.assertNotContains(response, 'Workspaces</a>')
+
+    def test_authenticated_teacher_redirects_to_workspace_list(self):
+        _create_teacher('teacher')
+        self.client.login(username='teacher', password='pw')
+        response = self.client.get(reverse('home'))
+        self.assertRedirects(response, reverse('workspace_list'))
+
+    def test_authenticated_student_redirects_to_student_home(self):
+        _create_student('student')
+        self.client.login(username='student', password='pw')
+        response = self.client.get(reverse('home'))
+        self.assertRedirects(response, reverse('student_home'))
+
+    def test_profile_less_user_chain_redirects_to_login(self):
+        # Mirrors the createsuperuser edge case documented on
+        # workspaces.decorators._role_required.
+        get_user_model().objects.create_user(username='noprofile', password='pw')
+        self.client.login(username='noprofile', password='pw')
+        response = self.client.get(reverse('home'), follow=True)
+        self.assertRedirects(response, f"{reverse('login')}?next={reverse('workspace_list')}")
+        self.assertContains(response, "set up yet")

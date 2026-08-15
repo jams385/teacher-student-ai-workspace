@@ -3,7 +3,7 @@ from collections import defaultdict
 from pypdf.errors import PyPdfError
 
 from django.contrib.auth import login, logout, update_session_auth_hash
-from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm
 from django.contrib import messages
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseForbidden
@@ -15,7 +15,8 @@ from django.views.decorators.http import require_POST
 from . import ai_client, moderation, storage
 from .decorators import student_required, teacher_required
 from .forms import (
-    AccountDeletionConfirmForm, MaterialUploadForm, StudentJoinForm, StudentSignupForm, WorkspaceForm,
+    AccountDeletionConfirmForm, MaterialUploadForm, StudentJoinForm, StudentSignupForm, TeacherSignupForm,
+    WorkspaceForm,
 )
 from .models import Flag, Material, Message, Profile, Slide, StudentSession, Workspace
 from .utils import (
@@ -24,18 +25,31 @@ from .utils import (
 )
 
 
+def home(request):
+    """Public landing page at `/`. An already-authenticated visitor has no
+    use for a marketing page, so send them straight on to their own home —
+    `_is_student` is defined further down this module but resolved at call
+    time, same as every other forward reference here."""
+    if request.user.is_authenticated:
+        return redirect('student_home' if _is_student(request.user) else 'workspace_list')
+    return render(request, 'workspaces/home.html')
+
+
 def teacher_signup(request):
     """Self-serve account creation for teachers."""
     if request.method == 'POST':
-        form = UserCreationForm(request.POST)
+        form = TeacherSignupForm(request.POST)
         if form.is_valid():
             user = form.save()
             Profile.objects.create(user=user, role=Profile.Role.TEACHER)
+            if form.cleaned_data.get('email'):
+                user.email = form.cleaned_data['email']
+                user.save(update_fields=['email'])
             login(request, user)
             messages.success(request, 'Welcome! Your teacher account has been created.')
             return redirect('workspace_list')
     else:
-        form = UserCreationForm()
+        form = TeacherSignupForm()
     return render(request, 'registration/signup.html', {'form': form})
 
 

@@ -1,17 +1,62 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Student sign up{% endblock %}
 
+{% block nav %}
+{% include 'workspaces/partials/_public_nav.html' %}
+{% endblock %}
+
 {% block content %}
-<h1>Create a student account</h1>
-<p>Pick a username and password — no email required. An account just lets you come back to workspaces you've already joined without needing the join code again.</p>
-
-<p><strong>What we collect here.</strong> A username and password you choose, and an email only if you choose to add one. Nothing else — no profile picture, and other students can never see your account or your work.</p>
-
-<form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Sign up</button>
-</form>
-<p>Already have an account? <a href="{% url 'student_login' %}">Log in</a> instead.</p>
+<section class="auth-hero">
+    <div class="auth-hero__art" aria-hidden="true">
+        <img class="hero__blob auth-hero__blob--large" src="{% static 'workspaces/vendor/hero/hero-blob-large.svg' %}" alt="">
+        <img class="hero__blob auth-hero__blob--small" src="{% static 'workspaces/vendor/hero/hero-blob-small.svg' %}" alt="">
+    </div>
+    <div class="auth-hero__copy">
+        <div class="auth-hero__heading">
+            <h1>Create a Student Account</h1>
+            <p class="auth-hero__subtext">An account lets you join and view workspaces, lectures, and chat with a specially curated AI by your teacher</p>
+        </div>
+        <form method="post" class="card">
+            {% csrf_token %}
+            {% for error in form.non_field_errors %}
+                <p class="form-error">{{ error }}</p>
+            {% endfor %}
+            {% for field in form %}
+                {% if field.name != 'agree_to_terms' %}
+                    <div class="form-field">
+                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.help_text %}<p class="form-help">{{ field.help_text }}</p>{% endif %}
+                        {% for error in field.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+                    </div>
+                {% endif %}
+            {% endfor %}
+            <details class="consent-notice">
+                <summary>Account creation notice — what we collect and why</summary>
+                <div class="consent-notice__body">
+                    <p><strong>What is this account for?</strong> You don't need an account to chat with your class's AI — you can always join with just a join code and a display name, no account at all. Creating an account just lets you come back to workspaces you've already joined without typing the join code again.</p>
+                    <p><strong>What we collect during sign up.</strong> A username and password you choose. An email address only if you choose to add one. Basic account activity (login times, workspaces you join).</p>
+                    <p><strong>Why do we collect this data?</strong> Solely to run your account: letting you log back in and see your "My Workspaces" list. If you add an email, it's kept for possible account-related communication down the line — never for marketing, never shared with third parties, and never shown to other students.</p>
+                    <p><strong>Does creating an account collect anything from my chats?</strong> No. Creating an account by itself doesn't collect any chat data. Each time you join a workspace, you'll see a separate notice covering what's collected while you chat and who can see it — your teacher, never other students.</p>
+                    <p><strong>Where is it stored?</strong> Account data is stored with Supabase (Postgres), the same infrastructure used for the rest of the app.</p>
+                    <p><strong>Your rights.</strong> You can delete your account at any time from your settings. Deleting your account removes your username and password — it does not delete your chat history, since your teacher may still need it for their class records. If you want your chat content itself gone, use "Clear my data" on a specific workspace instead.</p>
+                    <p><strong>Retention.</strong> Account data is kept for as long as your account is active.</p>
+                    <p><strong>If you're under 18,</strong> check with a parent or guardian before creating an account.</p>
+                    <p><strong>Questions or requests:</strong> [contact email]</p>
+                </div>
+            </details>
+            <div class="form-field">
+                <label class="form-checkbox">
+                    {{ form.agree_to_terms }}
+                    <span>{{ form.agree_to_terms.label }}</span>
+                </label>
+                {% for error in form.agree_to_terms.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+            </div>
+            <button type="submit" class="btn btn-primary">Get Started</button>
+        </form>
+        <p class="auth-hero__footer">Already have an account? <a href="{% url 'student_login' %}">Log in</a></p>
+    </div>
+</section>
 {% endblock %}

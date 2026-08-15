@@ -1,14 +1,40 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Student log in{% endblock %}
 
+{% block nav %}
+{% include 'workspaces/partials/_public_nav.html' %}
+{% endblock %}
+
 {% block content %}
-<h1>Student log in</h1>
-<form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Log in</button>
-</form>
-<p>Don't have an account? <a href="{% url 'student_signup' %}">Sign up</a>.</p>
-<p>Just joining for one class, no account needed? <a href="{% url 'student_join' %}">Join with a code</a>.</p>
+<section class="auth-hero">
+    <div class="auth-hero__art" aria-hidden="true">
+        <img class="hero__blob auth-hero__blob--large" src="{% static 'workspaces/vendor/hero/hero-blob-large.svg' %}" alt="">
+        <img class="hero__blob auth-hero__blob--small" src="{% static 'workspaces/vendor/hero/hero-blob-small.svg' %}" alt="">
+    </div>
+    <div class="auth-hero__copy">
+        <div class="auth-hero__heading">
+            <h1>Student Log In</h1>
+            <p class="auth-hero__subtext">Log in to see your workspaces and pick up right where you left off</p>
+        </div>
+        <form method="post" class="card">
+            {% csrf_token %}
+            {% for error in form.non_field_errors %}
+                <p class="form-error">{{ error }}</p>
+            {% endfor %}
+            {% for field in form %}
+                <div class="form-field">
+                    <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}<p class="form-help">{{ field.help_text }}</p>{% endif %}
+                    {% for error in field.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+                </div>
+            {% endfor %}
+            <button type="submit" class="btn btn-primary">Log In</button>
+        </form>
+        <p class="auth-hero__footer">Don't have an account? <a href="{% url 'student_signup' %}">Sign up</a></p>
+        <p class="auth-hero__footer">Just joining for one class, no account needed? <a href="{% url 'student_join' %}">Join with a code</a></p>
+    </div>
+</section>
 {% endblock %}

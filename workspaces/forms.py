@@ -34,16 +34,43 @@ class StudentJoinForm(forms.Form):
         return code
 
 
+class TeacherSignupForm(UserCreationForm):
+    """Adds an optional email field (mirrors StudentSignupForm — no
+    self-service password reset actually sends anything yet, so this is
+    collected for potential future use, not a working reset flow today)
+    plus a required consent checkbox on top of UserCreationForm's bare
+    username/password1/password2. See
+    docs/teacher_account_consent_notice.md, the account-creation-specific
+    notice — distinct from docs/teacher_consent_notice.md, which covers
+    workspace creation and is shown at a different point in the app."""
+
+    email = forms.EmailField(required=False, label='Email (optional)')
+    agree_to_terms = forms.BooleanField(
+        required=True,
+        label='I have read and understood this notice, and I agree to the terms above.',
+    )
+
+    class Meta(UserCreationForm.Meta):
+        fields = ('username',)
+
+
 class StudentSignupForm(UserCreationForm):
     """Self-serve student account creation — no teacher gating. Deliberately
     just username + password (reusing UserCreationForm's fields and the same
-    password validators teacher signup uses) plus one optional email. An
-    account's only purpose is a persistent "My Workspaces" list (see
-    views.student_home) — joining a workspace itself is still the same
-    join-code + display-name flow everyone uses (StudentJoinForm), whether
-    logged in or anonymous."""
+    password validators teacher signup uses) plus one optional email and a
+    required consent checkbox (mirrors TeacherSignupForm — see
+    docs/student_account_signup_notice.md, distinct from
+    docs/student_workspace_join_notice.md, which is shown later, per
+    workspace, when a student actually joins one). An account's only
+    purpose is a persistent "My Workspaces" list (see views.student_home)
+    — joining a workspace itself is still the same join-code + display-name
+    flow everyone uses (StudentJoinForm), whether logged in or anonymous."""
 
     email = forms.EmailField(required=False, label='Email (optional)')
+    agree_to_terms = forms.BooleanField(
+        required=True,
+        label='I have read and understood this notice, and I agree to the terms above.',
+    )
 
     class Meta(UserCreationForm.Meta):
         fields = ('username',)

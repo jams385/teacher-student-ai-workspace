@@ -1,0 +1,853 @@
+/* ==========================================================================
+   Gabay Mata design system
+   Extracted from Figma (file: Teacher-Student-Ai-Workspace, jxNlOuCAIR68HP345GXWEK)
+   Source nodes: Homepage (92:84), Teacher Signup (92:102), Student Signup (92:128)
+
+   Plain CSS, no build step. Custom properties on :root are the tokens;
+   everything below them is base styles + reusable component classes built
+   from those tokens. Values pulled straight from Figma are noted with the
+   node id they came from. Anything NOT in the Figma file (message/alert
+   colors, focus rings, a secondary button variant, neutral grays) is noted
+   as an addition, since those screens didn't cover those states.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Fonts
+
+   Montserrat is vendored locally (workspaces/static/workspaces/vendor/fonts)
+   rather than linked from Google Fonts' CDN, matching how htmx.min.js is
+   already vendored in this project instead of pulled from a CDN — it also
+   avoids sending every page view from student browsers to a third party.
+   Latin-subset woff2 only.
+   -------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../vendor/fonts/montserrat/montserrat-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../vendor/fonts/montserrat/montserrat-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../vendor/fonts/montserrat/montserrat-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('../vendor/fonts/montserrat/montserrat-800.woff2') format('woff2');
+}
+
+/* --------------------------------------------------------------------------
+   Tokens
+   -------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  /* --- Color: from Figma's published variables (get_variable_defs) --- */
+  --color-white: #FFFFFF;                 /* "white" */
+  --color-black: #000000;                 /* "Grays/Black" */
+  --color-accent-dark: #5E6282;           /* "Accent Dark Color" — secondary text, borders */
+  --color-primary-light: #FFC067;         /* "Primary Light" — primary button fill */
+
+  /* --- Color: raw hex seen in the designs, not exposed as named variables --- */
+  --color-primary-light-border: #FFAE45;  /* primary button border, nodes 92:122 / 92:147 */
+  --color-label-accent: #6E92A8;          /* homepage eyebrow label, node 92:91 */
+  /* No --color-decorative-blue: the hero's two background shapes are now
+     real exported SVG assets (see .hero__blob) with the fill baked into
+     the file, not a CSS-drawn shape — nothing left to hook a token to. */
+
+  /* --- Color: neutral extensions, NOT in Figma ---
+     The 3 screens are all pure white backgrounds with black/accent-dark
+     text, so there's no neutral gray scale to extract. These fill the gap
+     for things a real layout shell needs (dividers, hover states) — kept
+     close to --color-accent-dark's hue so they don't look bolted on. */
+  --color-gray-100: #F7F7FA;
+  --color-gray-200: #E7E7EE;
+
+  /* --- Color: semantic/message states, NOT in Figma ---
+     None of the 3 screens include an alert/toast/message component, so
+     these are new — chosen to sit alongside the existing palette rather
+     than clash with it (warning reuses the brand amber; info reuses the
+     eyebrow-label blue). */
+  --color-success-bg: #E9F7EF;
+  --color-success-border: #8FD9AE;
+  --color-success-text: #1E7A46;
+  --color-error-bg: #FDECEC;
+  --color-error-border: #F3A9A4;
+  --color-error-text: #B3261E;
+  --color-warning-bg: #FFF6E5;
+  --color-warning-border: var(--color-primary-light-border);
+  --color-warning-text: #8A5A00;
+  --color-info-bg: #EAF3F8;
+  --color-info-border: var(--color-label-accent);
+  --color-info-text: #2C4A5E;
+  --color-debug-bg: var(--color-gray-100);
+  --color-debug-border: var(--color-gray-200);
+  --color-debug-text: var(--color-accent-dark);
+
+  /* --- Type --- */
+  --font-family-base: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-weight-regular: 400;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+
+  /* Type scale. Figma returned some non-round pixel values (e.g. 48.854px,
+     41.37px, 16.548px) — almost certainly an artifact of a non-uniform
+     resize applied to those frames, not an intentional scale. Snapped to
+     the nearest round pixel so the scale is usable as actual tokens; the
+     Figma value is noted alongside each for traceability. */
+  --font-size-sm: 16px;    /* 16px / 16.548px — button labels, form helper text */
+  --font-size-base: 18px;  /* 18px — homepage CTA button label */
+  --font-size-md: 20px;    /* 20px — eyebrow label, form field labels */
+  --font-size-lg: 24px;    /* 24px — homepage body paragraph */
+  --font-size-xl: 40px;    /* 41.37px — signup page H1 */
+  --font-size-2xl: 48px;   /* 48.854px — homepage hero H1 */
+
+  --line-height-tight: 1.2;    /* hero heading, node 92:87 */
+  --line-height-snug: 1.25;    /* homepage body paragraph, node 92:88 */
+  --line-height-normal: 1.5;   /* not directly observed; general body copy */
+
+  /* --- Spacing scale ---
+     Built from the recurring integer values across all 3 screens (the
+     stray 9px input padding is rounded to the 10px step below it — a 1px
+     difference isn't perceptible and keeps this a real scale rather than
+     one token per pixel seen). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 10px;  /* form field stack gap; input vertical padding (Figma: 9px) */
+  --space-4: 16px;  /* input horizontal padding; general base unit */
+  --space-5: 24px;  /* signup header stack gap */
+  --space-6: 36px;  /* card padding */
+  --space-7: 46px;  /* homepage hero content gap */
+  --space-8: 56px;  /* nav top offset */
+
+  /* Page gutter: Figma's nav used an asymmetric 80px/118px left/right
+     margin (the extra right-side space was just clearance for the profile
+     icon) — using a single symmetric value for a real responsive layout. */
+  --layout-gutter: clamp(20px, 5vw, 80px);
+
+  /* --- Radius ---
+     Only one radius value appears anywhere in the 3 screens (buttons,
+     inputs, the signup form card): 10px. Aliased per-component so a future
+     divergence (e.g. pill buttons) only means changing one line. */
+  --radius-md: 10px;
+  --radius-button: var(--radius-md);
+  --radius-input: var(--radius-md);
+  --radius-card: var(--radius-md);
+}
+
+/* --------------------------------------------------------------------------
+   Base / reset
+   -------------------------------------------------------------------------- */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-white);
+  color: var(--color-black);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-normal);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* --------------------------------------------------------------------------
+   Buttons
+   Source: "Primary Button (Default)", nodes 92:122 / 92:147 (signup pages).
+   -------------------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-button);
+  border: 1px solid transparent;
+  font-family: var(--font-family-base);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.btn-primary {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary-light-border);
+  color: var(--color-white);
+}
+
+.btn-primary:hover {
+  background: color-mix(in srgb, var(--color-primary-light) 85%, black);
+}
+
+.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-light) 40%, transparent);
+}
+
+/* Not in Figma — the 3 screens only show the primary CTA. A quieter
+   variant for secondary actions (e.g. "Log out" in the nav). */
+.btn-secondary {
+  background: transparent;
+  border-color: var(--color-accent-dark);
+  color: var(--color-accent-dark);
+}
+
+.btn-secondary:hover {
+  background: var(--color-gray-100);
+}
+
+.btn-secondary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-dark) 30%, transparent);
+}
+
+.btn-sm {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+/* --------------------------------------------------------------------------
+   Form inputs
+   Source: "Placeholder Button" input fields, nodes 92:116/118/120 (+ 92:141/143/145).
+
+   Django's auto-rendered fields ({{ field }}, e.g. AuthenticationForm /
+   UserCreationForm on the login+signup pages) come out with no class to
+   hook — rather than touch forms.py to add one, these selectors also match
+   any bare input/select/textarea inside a .card, so real form fields (with
+   Django's autofocus/autocomplete/required attributes intact) pick up the
+   exact same look as .form-input for free.
+   -------------------------------------------------------------------------- */
+.form-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-md);
+  color: var(--color-black);
+}
+
+.form-input,
+.card input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+.card select,
+.card textarea {
+  display: block;
+  width: 100%;
+  height: 43px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-accent-dark);
+  border-radius: var(--radius-input);
+  background: var(--color-white);
+  color: var(--color-black);
+  font-size: var(--font-size-sm);
+}
+
+/* Figma's mock input applied opacity:0.85 to the whole placeholder box —
+   translated to a tinted border only, so real typed text stays fully
+   legible instead of fading with the box. */
+.form-input,
+.card input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+.card select,
+.card textarea {
+  border-color: color-mix(in srgb, var(--color-accent-dark) 85%, transparent);
+}
+
+.form-input:focus,
+.card input:focus,
+.card select:focus,
+.card textarea:focus {
+  outline: none;
+  border-color: var(--color-primary-light-border);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-light) 25%, transparent);
+}
+
+/* --------------------------------------------------------------------------
+   Card
+   Source: signup form container, nodes 92:114 / 92:139.
+   -------------------------------------------------------------------------- */
+.card {
+  background: var(--color-white);
+  border-radius: var(--radius-card);
+  padding: var(--space-6);
+}
+
+/* --------------------------------------------------------------------------
+   Consent notice (collapsible <details> + checkbox)
+   Not in Figma — none of the 3 extracted screens show a legal/consent
+   step. Built for docs/teacher_account_consent_notice.md's
+   checkbox-before-submit pattern; reusable as-is for the other two
+   drafted-but-unwired notices (workspace creation, student join — see
+   CLAUDE.md) whenever those get built. Collapsed by default (a <details>
+   with no [open] attribute) so the full notice text doesn't dominate the
+   page — the checkbox is what's actually required to submit, not reading
+   every word, same as any real consent checkbox.
+   -------------------------------------------------------------------------- */
+.consent-notice {
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--color-gray-100);
+}
+
+.consent-notice summary {
+  cursor: pointer;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-dark);
+}
+
+.consent-notice[open] summary {
+  margin-bottom: var(--space-3);
+}
+
+.consent-notice__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-dark);
+}
+
+.consent-notice__body p {
+  margin: 0;
+}
+
+/* Scoped to input[type=checkbox] rather than a bare selector, so it
+   doesn't reach into unrelated checkboxes elsewhere in the app (e.g. any
+   future filter/bulk-select UI) that haven't opted into this look. */
+.form-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+}
+
+.form-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  accent-color: var(--color-primary-light);
+}
+
+/* --------------------------------------------------------------------------
+   Homepage hero
+   Source: Homepage, node 92:84 — the only one of the 3 extracted screens
+   used as a full page so far. The single "Discover more" CTA became two
+   buttons ("I'm a teacher" / "I'm a student"), both reusing .btn-primary
+   as-is — the homepage's own CTA had no border in Figma while the signup
+   pages' does, but one consistent button across the whole site beats a
+   third button variant for one page.
+   -------------------------------------------------------------------------- */
+/* min-height matches .hero__blob--small's bottom edge: its top (16.736vw)
+   + its rendered height (auto, from width:28.264vw scaled by the SVG's
+   own 407:361 aspect ratio = 361/1440*100 = 25.069vw) = 41.806vw — the
+   deeper of the two blobs (.hero__blob--large's bottom is 0.833vw +
+   692.3677's height-at-that-width = ~34.9vw, well short of this).
+   .hero__art is position:absolute so it doesn't contribute to .hero's
+   own height; without this, .hero ends at .hero__copy's shorter height
+   and the artwork bleeds past the section into whatever comes next. */
+.hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-7);
+  padding-block: var(--space-7);
+  min-height: 41.806vw;
+}
+
+.hero__copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  flex: 0 1 660px;
+  max-width: 660px;
+}
+
+.hero__eyebrow {
+  margin: 0;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-md);
+  color: var(--color-label-accent);
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-extrabold); /* Figma: Montserrat ExtraBold, node 92:87 */
+}
+
+.hero__subtext {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  line-height: var(--line-height-snug);
+  color: var(--color-accent-dark);
+  max-width: 34ch;
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+/* Figma's hero CTA was 18px, a size step up from every other button on
+   the site (16px) — reusing that existing, already-labeled token rather
+   than leaving it unused or inventing a new .btn-lg variant. */
+.hero__actions .btn {
+  font-size: var(--font-size-base);
+}
+
+/* Purely decorative overlay, not a flex participant — .hero__copy alone
+   determines the row's layout (flex:0 1 660px, doesn't grow to fill
+   leftover space), so removing .hero__art from flow doesn't affect it.
+
+   It also isn't positioned relative to .hero's own (centered, gutter-
+   padded, max-width:1200px) box — that box's right edge sits well short
+   of the true viewport edge, which is what the Figma frame's right edge
+   (1440px wide, no gutter) actually corresponds to. `right: 50%;
+   margin-right: -50vw;` is the standard "full-bleed" escape: since
+   .hero's own horizontal center coincides with the viewport's center
+   (site-main is margin:0 auto), this pins .hero__art's right edge to the
+   true viewport edge regardless of .site-main's max-width/gutter —
+   without it, Ellipse 2's bleed (see below) gets clipped by .hero__art's
+   own edge instead of the page edge, which looks like a rendering bug,
+   not a deliberate bleed off the page. */
+.hero__art {
+  position: absolute;
+  top: 0;
+  right: 50%;
+  margin-right: -50vw;
+  width: 41vw;      /* just enough to hold Ellipse 1's full extent (855 to
+                        the frame's 1440 right edge = 585px = 40.625vw)
+                        without clipping it too */
+  height: 42vw;     /* Ellipse 1's full vertical extent, see .hero__blob--small */
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* The two decorative shapes are real Figma vector assets, exported via the
+   MCP (download_assets, whole-node "export" was pre-clipped to the
+   frame's visible bounds, so these use the svgAssets vector-layer export
+   instead — the full, un-clipped ellipse, fill baked into the file:
+   #66C4FF at 20% opacity) — not CSS-drawn circles. They aren't circles:
+   Ellipse 1 is 407x361, Ellipse 2 is 692.3677x491.2002, so a
+   border-radius:50% square would have been the wrong shape regardless of
+   sizing.
+
+   Sizing/position: get_metadata on the Homepage frame (92:84) gives its
+   real width, 1440px, and each ellipse's frame-relative x/y/width/height
+   (92:99, 92:100). Every value below is that Figma number divided by
+   1440 and expressed in vw, so at a 1440px viewport this renders at the
+   exact Figma pixel size/position, and scales proportionally at any
+   other width — not a percentage of .hero__art's own (flex-computed,
+   layout-dependent) box, which was the previous bug.
+
+   Anchors: `right` is measured from the frame's right edge (1440), which
+   .hero__art's own right edge now actually is (see above). `top` is
+   measured from the hero content block's own y (92:85, y=164) rather
+   than the frame's y=0 — that block is the real analog of where
+   .hero__art starts in the live page (right after the nav), whereas
+   frame y=0 is the very top of the canvas above the nav. */
+.hero__blob {
+  position: absolute;
+  display: block;
+  height: auto;
+}
+
+/* Ellipse 2 (large), node 92:100: x=1003 y=176 w=692.3677 h=491.2002.
+   Bleeds 255px past the frame's right edge in Figma itself (1003 + 692.3677
+   > 1440) — right ends up negative here for the same reason, clipped by
+   .hero__art's overflow:hidden exactly like the frame clips it. */
+.hero__blob--large {
+  width: 48.081vw;   /* 692.3677 / 1440 */
+  right: -17.734vw;  /* (1440 - (1003 + 692.3677)) / 1440 */
+  top: 0.833vw;      /* (176 - 164) / 1440 */
+}
+
+/* Ellipse 1 (small), node 92:99: x=855 y=405 w=407 h=361. */
+.hero__blob--small {
+  width: 28.264vw;  /* 407 / 1440 */
+  right: 12.361vw;  /* (1440 - (855 + 407)) / 1440 */
+  top: 16.736vw;    /* (405 - 164) / 1440 */
+}
+
+/* --------------------------------------------------------------------------
+   Auth hero (4 auth pages + the anonymous join page)
+   Source: Teacher Signup, node 92:102, and Student Signup, node 92:128 —
+   the two are pixel-identical (same blob coordinates, same 546px form
+   card, same button block), just different copy, so one set of rules
+   covers both. Same blob-art-plus-copy-column shape as the homepage hero,
+   mirrored: the art bleeds off the LEFT edge here and the copy sits on the
+   right (Figma has the form on the right, art on the left — the opposite
+   side from the homepage). Neither login page nor the join page
+   (workspaces/student_join.html) has a dedicated Figma screen and all
+   three reuse the pattern as-is (hence "auth", not "signup" — renamed
+   once a second page adopted this shape). The Django form itself (CSRF,
+   non-field-error loop, per-field label/help/error loop) is completely
+   untouched on every page — only the wrapper markup and copy text changed
+   to match Figma (both signups) or to mirror it (logins + join,
+   invented). Student signup carries extra `.auth-hero__subtext`
+   paragraphs for the data-minimization notice, and student login has two
+   `.auth-hero__footer` paragraphs instead of one (account signup +
+   anonymous join-by-code) — neither needed new CSS, see CLAUDE.md. Both
+   ellipses are the exact same 692.3677x491.2 / 407x361 shapes as
+   .hero__blob — reused as-is, just repositioned — so see .hero__blob
+   above for the asset/shape sourcing notes, not repeated here.
+   -------------------------------------------------------------------------- */
+/* min-height = .auth-hero__blob--small's top (16.736vw) + its rendered
+   height (361/1440*100 = 25.069vw) = 41.806vw, same reasoning as .hero's
+   min-height (and, coincidentally, the same number — both screens' small
+   blob ends up the deeper of the two). */
+.auth-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-block: var(--space-7);
+  min-height: 41.806vw;
+}
+
+.auth-hero__copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  flex: 0 1 546px;   /* Figma form card width, node 92:114 */
+  max-width: 546px;
+}
+
+.auth-hero__heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5); /* Figma: 24px gap between h1 and subtext, node 92:111 */
+}
+
+.auth-hero h1 {
+  font-size: var(--font-size-xl); /* Figma: 41.37px, node 92:112 — same snapped token .auth-page h1 uses */
+}
+
+.auth-hero__subtext {
+  margin: 0;
+  font-size: var(--font-size-sm); /* Figma: 16.548px, node 92:113 */
+  color: var(--color-accent-dark);
+}
+
+/* Figma's "Get Started" button spans nearly the full width of its 446px
+   container (439px) — unlike every other .btn on the site, which is
+   content-sized. Scoped to this page shape rather than a new .btn modifier
+   since nowhere outside signup/login needs a full-width button yet. */
+.auth-hero__copy .btn-primary {
+  width: 100%;
+}
+
+.auth-hero__footer {
+  margin: 0;
+  text-align: center;
+  font-size: var(--font-size-sm);
+}
+
+.auth-hero__footer a {
+  color: var(--color-accent-dark);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: underline;
+}
+
+/* Mirrors .hero__art's full-bleed technique (see above) but pinned to the
+   viewport's LEFT edge instead of the right, since this screen's art sits
+   on the opposite side. Same reasoning: .auth-hero's own horizontal
+   center coincides with the viewport's center (site-main is margin:0
+   auto), so `left: 50%; margin-left: -50vw;` pins this to the true
+   viewport edge regardless of .site-main's max-width/gutter. */
+.auth-hero__art {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  margin-left: -50vw;
+  width: 46.5vw;  /* holds Ellipse 4 (small)'s full extent: (260+407)/1440 = 46.319vw */
+  height: 42vw;   /* holds both ellipses' full vertical extent, see blobs below */
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Ellipse 3 (large), node 92:125: x=-103 y=154 w=692.3677 h=491.2002 —
+   identical asset to .hero__blob--large, repositioned for this screen.
+   `left` is measured from the frame's own left edge (0), which
+   .auth-hero__art's own left edge now actually is (see above). `top`
+   uses this blob's own Figma y (154) as the zero-point, same "pick a
+   consistent baseline" approach .hero__blob's `top` values use. */
+.auth-hero__blob--large {
+  width: 48.081vw;  /* 692.3677 / 1440 — same asset as .hero__blob--large */
+  left: -7.153vw;   /* -103 / 1440 */
+  top: 0;
+}
+
+/* Ellipse 3 (small — Figma reused the layer name), node 92:126:
+   x=260 y=395 w=407 h=361 — identical asset to .hero__blob--small. */
+.auth-hero__blob--small {
+  width: 28.264vw;  /* 407 / 1440 — same asset as .hero__blob--small */
+  left: 18.056vw;   /* 260 / 1440 */
+  top: 16.736vw;    /* (395 - 154) / 1440 */
+}
+
+/* --------------------------------------------------------------------------
+   Auth pages (login / signup)
+   Not one of the 3 extracted Figma screens as a whole page — those show a
+   signup *card* (nodes 92:114/92:139, covered by .form-label/.form-input
+   above) but not a full login variant, error states, or Django's help text.
+   Composed entirely from existing tokens for a heading + .card form +
+   footer link, reused across all 4 auth templates for a consistent shape.
+   -------------------------------------------------------------------------- */
+.auth-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.auth-page h1 {
+  font-size: var(--font-size-xl);
+}
+
+.auth-page a {
+  color: var(--color-accent-dark);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: underline;
+}
+
+/* One Django form field (label + auto-rendered input + help/error text). */
+.form-field {
+  margin-bottom: var(--space-3);
+}
+
+.form-help {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-dark);
+}
+
+.form-error {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-error-text);
+}
+
+/* --------------------------------------------------------------------------
+   Layout shell
+   -------------------------------------------------------------------------- */
+.site-header {
+  border-bottom: 1px solid var(--color-gray-200);
+  padding: var(--space-4) var(--layout-gutter);
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.site-nav__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Logo, used by the homepage's nav override (block "nav" in home.html).
+   Source file: workspaces/static/workspaces/vendor/logo/gabay-mata-logo.png
+   (user-provided, not exported from Figma node 92:98 — downscaled from a
+   4696x2531 original to 600px wide, still ~2x a 40px-tall render for
+   retina, at a fraction of the file size). */
+.site-nav__logo {
+  display: inline-flex;
+  align-items: center;
+}
+
+.site-nav__logo img {
+  display: block;
+  height: 40px;
+  width: auto;
+}
+
+.site-nav__links a {
+  display: inline-block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+  color: var(--color-black);
+}
+
+.site-nav__links a:hover {
+  background: var(--color-gray-100);
+}
+
+.site-nav__user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.site-nav__username {
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+}
+
+.site-nav__logout {
+  margin: 0;
+  display: inline-flex;
+}
+
+.site-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--layout-gutter);
+}
+
+/* --------------------------------------------------------------------------
+   Django messages
+   Not present in the extracted Figma screens — colors chosen to match the
+   existing palette (see the semantic tokens above). Tag names are Django's
+   defaults (debug/info/success/warning/error) via {{ message.tags }}.
+   -------------------------------------------------------------------------- */
+.messages {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-4) var(--layout-gutter) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.messages li {
+  border: 1px solid var(--color-gray-200);
+  background: var(--color-gray-100);
+  color: var(--color-black);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+.messages li.success {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
+}
+
+.messages li.error {
+  background: var(--color-error-bg);
+  border-color: var(--color-error-border);
+  color: var(--color-error-text);
+}
+
+.messages li.warning {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+}
+
+.messages li.info {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  color: var(--color-info-text);
+}
+
+.messages li.debug {
+  background: var(--color-debug-bg);
+  border-color: var(--color-debug-border);
+  color: var(--color-debug-text);
+}
+
+@media (max-width: 640px) {
+  .site-header,
+  .site-main,
+  .messages {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-5);
+    padding-block: var(--space-5);
+  }
+
+  .hero__copy {
+    max-width: 100%;
+  }
+
+  /* Figma only specified this screen at desktop width; the art panel has
+     no content of its own (aria-hidden decoration), so simplest to drop
+     it below the point where it'd otherwise get cramped. */
+  .hero__art {
+    display: none;
+  }
+
+  /* Same treatment as .hero above: stack to a single column and drop the
+     decorative art rather than cram it beside a full-width form. */
+  .auth-hero {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: var(--space-5);
+    padding-block: var(--space-5);
+    min-height: 0;
+  }
+
+  .auth-hero__copy {
+    max-width: 100%;
+  }
+
+  .auth-hero__art {
+    display: none;
+  }
+}

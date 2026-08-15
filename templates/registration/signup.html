@@ -1,13 +1,61 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Sign up{% endblock %}
 
+{% block nav %}
+{% include 'workspaces/partials/_public_nav.html' %}
+{% endblock %}
+
 {% block content %}
-<h1>Create a teacher account</h1>
-<form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Sign up</button>
-</form>
-<p><a href="{% url 'login' %}">Already have an account? Log in</a></p>
+<section class="auth-hero">
+    <div class="auth-hero__art" aria-hidden="true">
+        <img class="hero__blob auth-hero__blob--large" src="{% static 'workspaces/vendor/hero/hero-blob-large.svg' %}" alt="">
+        <img class="hero__blob auth-hero__blob--small" src="{% static 'workspaces/vendor/hero/hero-blob-small.svg' %}" alt="">
+    </div>
+    <div class="auth-hero__copy">
+        <div class="auth-hero__heading">
+            <h1>Create a Teacher Account</h1>
+            <p class="auth-hero__subtext">Create workspaces and manage your data through a dashboard</p>
+        </div>
+        <form method="post" class="card">
+            {% csrf_token %}
+            {% for error in form.non_field_errors %}
+                <p class="form-error">{{ error }}</p>
+            {% endfor %}
+            {% for field in form %}
+                {% if field.name != 'agree_to_terms' %}
+                    <div class="form-field">
+                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.help_text %}<p class="form-help">{{ field.help_text }}</p>{% endif %}
+                        {% for error in field.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+                    </div>
+                {% endif %}
+            {% endfor %}
+            <details class="consent-notice">
+                <summary>Account creation notice — what we collect and why</summary>
+                <div class="consent-notice__body">
+                    <p><strong>What is this account for?</strong> Your account lets you create and manage AI chat workspaces for your classes, set behavioral modes, upload materials, and review your dashboard.</p>
+                    <p><strong>What we collect during sign up.</strong> Username and password. An email address only if you choose to add one. Basic account activity (login times, workspaces you create).</p>
+                    <p><strong>Why do we collect this data?</strong> Solely to authenticate you and operate your account. If you add an email, it's kept for possible account-related communication down the line — never for marketing, and never shared with third parties. It's also used to make sure your workspaces are saved and that only you can access them.</p>
+                    <p><strong>How does this relate to student data?</strong> Creating an account as a teacher does not collect any student data. Each time you create a workspace, you'll see a separate notice covering what's collected from your students and your responsibilities toward them.</p>
+                    <p><strong>Where is it stored?</strong> Account data is stored with Supabase (Postgres), the same infrastructure used for the rest of the app.</p>
+                    <p><strong>Your rights.</strong> You can request a copy of your account data, correct it, or delete your account (and everything tied to it) at any time. Deleting your account also deletes the workspaces you own and their associated data.</p>
+                    <p><strong>Retention.</strong> Account data is kept for as long as your account is active.</p>
+                    <p><strong>Questions or requests:</strong> [contact email]</p>
+                </div>
+            </details>
+            <div class="form-field">
+                <label class="form-checkbox">
+                    {{ form.agree_to_terms }}
+                    <span>{{ form.agree_to_terms.label }}</span>
+                </label>
+                {% for error in form.agree_to_terms.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+            </div>
+            <button type="submit" class="btn btn-primary">Get Started</button>
+        </form>
+        <p class="auth-hero__footer">Already have a teacher account? <a href="{% url 'login' %}">Log in</a></p>
+    </div>
+</section>
 {% endblock %}

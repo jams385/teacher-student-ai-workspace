@@ -8,13 +8,13 @@ Your account lets you create and manage AI chat workspaces for your classes, set
 
 **What we collect during sign up.**
 
-\- Name and email address  
-\- Password  
+\- Username and password  
+\- Email address, only if you choose to add one  
 \- Basic account activity (login times, workspaces you create)
 
 **Why do we collect this data?**
 
-Solely to authenticate you and operate your account. Your email is used for account-related communication (e.g., password resets), not marketing, and not shared with third parties.
+Solely to authenticate you and operate your account. If you add an email, it's kept for possible account-related communication down the line — never for marketing, and never shared with third parties. (There's no working password-reset-by-email flow yet — adding an email doesn't unlock that today, it's collected for when that's built.)
 
 It is also used to make sure that your workspaces are saved and that only you can access them.
 
