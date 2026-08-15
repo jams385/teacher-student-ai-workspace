@@ -3,31 +3,62 @@
 {% block title %}Your workspaces{% endblock %}
 
 {% block content %}
-<h1>Your workspaces</h1>
-<p><a href="{% url 'workspace_create' %}">+ New workspace</a></p>
+<div class="page-header">
+    <div>
+        <h1>Your workspaces</h1>
+        <p class="page-header__subtext">Create a workspace for each class, then share its join code with students.</p>
+    </div>
+    <a href="{% url 'workspace_create' %}" class="btn btn-primary">+ New workspace</a>
+</div>
 
 {% if workspaces %}
-<table>
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Mode</th>
-            <th>Join code</th>
-            <th>Created</th>
-        </tr>
-    </thead>
-    <tbody>
+<div class="workspace-grid">
     {% for workspace in workspaces %}
-        <tr>
-            <td><a href="{% url 'workspace_detail' pk=workspace.pk %}">{{ workspace.name }}</a></td>
-            <td>{{ workspace.get_mode_display }}</td>
-            <td><code>{{ workspace.join_code }}</code></td>
-            <td>{{ workspace.created_at|date:"M j, Y" }}</td>
-        </tr>
+    <article class="workspace-card">
+        <span class="badge badge--{{ workspace.mode }}">{{ workspace.get_mode_display }}</span>
+        <h2 class="workspace-card__name"><a href="{% url 'workspace_detail' pk=workspace.pk %}">{{ workspace.name }}</a></h2>
+        <p class="workspace-card__meta">Created {{ workspace.created_at|date:"M j, Y" }}</p>
+        <div class="workspace-card__joincode">
+            <span class="workspace-card__joincode-label">Join code</span>
+            <code class="workspace-card__joincode-value">{{ workspace.join_code }}</code>
+            <button type="button" class="workspace-card__copy" data-copy-text="{{ workspace.join_code }}">Copy</button>
+        </div>
+    </article>
     {% endfor %}
-    </tbody>
-</table>
+</div>
 {% else %}
-<p>You haven't created any workspaces yet.</p>
+<div class="empty-state">
+    <h2>No workspaces yet</h2>
+    <p>Create your first workspace to set a behavior mode, share a join code with your class, and start monitoring how students use it.</p>
+    <a href="{% url 'workspace_create' %}" class="btn btn-primary">+ New workspace</a>
+</div>
 {% endif %}
+
+<script>
+    // Lightweight copy-to-clipboard for each card's join code. Event
+    // delegation on the grid (rather than a listener per card) so this
+    // scales to any number of workspaces for free — mirrors the small
+    // inline scripts already used elsewhere in this app (e.g. the upload
+    // status text on workspace_detail.html).
+    (function () {
+        var grid = document.querySelector('.workspace-grid');
+        if (!grid) return;
+
+        grid.addEventListener('click', function (event) {
+            var button = event.target.closest('.workspace-card__copy');
+            if (!button) return;
+
+            var code = button.dataset.copyText;
+            var originalLabel = button.textContent;
+            navigator.clipboard.writeText(code).then(function () {
+                button.textContent = 'Copied!';
+                setTimeout(function () { button.textContent = originalLabel; }, 1500);
+            }).catch(function () {
+                // Clipboard access can fail (insecure context, denied
+                // permission, etc.) — the code is still right there in the
+                // chip to copy by hand, so just leave the button as-is.
+            });
+        });
+    })();
+</script>
 {% endblock %}

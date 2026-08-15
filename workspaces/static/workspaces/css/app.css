@@ -676,6 +676,195 @@ button, input, select, textarea {
 }
 
 /* --------------------------------------------------------------------------
+   Teacher workspace list ("Your workspaces")
+   Not from Figma — the 3 extracted screens are all pre-login/marketing
+   pages, so this is the first authenticated-app screen to get real design
+   rather than bare Django scaffolding (`<h1>` + `<table>`). Built entirely
+   from tokens/patterns already established above rather than a design
+   source: `.page-header` and `.empty-state` are generic enough to reuse on
+   the next unstyled app page (workspace detail/dashboard), not one-offs.
+   -------------------------------------------------------------------------- */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.page-header h1 {
+  font-size: var(--font-size-xl);
+}
+
+.page-header__subtext {
+  margin-top: var(--space-2);
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+}
+
+/* Card grid, not the plain `<table>` this page used to render — a join
+   code is the one piece of data a teacher actually needs to grab quickly
+   (to read out to a class or paste into a doc), and a badge reads faster
+   than a text column when scanning several classes' modes at a glance. */
+.workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-5);
+}
+
+/* `position: relative` is load-bearing, not decorative — it's the
+   containing block for `.workspace-card__name a::after` below (the
+   "stretched link" that makes the whole card clickable). */
+.workspace-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--color-white);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-card);
+  padding: var(--space-5);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.workspace-card:hover {
+  border-color: var(--color-primary-light-border);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-black) 8%, transparent);
+}
+
+.workspace-card__name {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+/* The name link is stretched to cover the entire card (`::after` +
+   `inset: 0`) so the whole card is one click target, not just the two
+   lines of title text — standard "stretched link" pattern. Everything
+   else in the card (badge, meta text, join code) sits underneath the
+   invisible overlay and still displays normally; only `.workspace-card__copy`
+   below needs to explicitly lift itself above the overlay to stay
+   clickable. */
+.workspace-card__name a {
+  text-decoration: none;
+}
+
+.workspace-card__name a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.workspace-card__meta {
+  margin: 0;
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+}
+
+/* Mode badge. Reuses the existing success/warning/info message-color trios
+   instead of inventing a fourth palette — none of these are semantically
+   "success" or "warning" here, just three already-vetted, already-distinct
+   hues borrowed to tell the three modes apart at a glance. */
+.badge {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.badge--socratic {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  color: var(--color-info-text);
+}
+
+.badge--homework {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+}
+
+.badge--lecture {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
+}
+
+/* Join code row, pinned to the bottom of the card via margin-top:auto so
+   cards with shorter names still line up along the same baseline in a grid
+   row. `<code>` is left to the browser's own UA monospace stack rather than
+   declaring a new font stack for one element on one page. */
+.workspace-card__joincode {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-gray-200);
+}
+
+.workspace-card__joincode-label {
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+}
+
+.workspace-card__joincode-value {
+  background: var(--color-gray-100);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: .05em;
+}
+
+/* `position: relative` lifts this above the name link's stretched
+   `::after` (see `.workspace-card__name` above) so it stays independently
+   clickable instead of triggering navigation. */
+.workspace-card__copy {
+  position: relative;
+  margin-left: auto;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  color: var(--color-accent-dark);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.workspace-card__copy:hover {
+  background: var(--color-gray-100);
+}
+
+.workspace-card__copy:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-light) 40%, transparent);
+}
+
+/* Reused as-is for any other "nothing here yet" state (a workspace with no
+   students, no flags, etc.) once those pages get designed. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-5);
+  border: 1px dashed var(--color-gray-200);
+  border-radius: var(--radius-card);
+  background: var(--color-gray-100);
+  text-align: center;
+}
+
+.empty-state p {
+  max-width: 46ch;
+  color: var(--color-accent-dark);
+}
+
+/* --------------------------------------------------------------------------
    Layout shell
    -------------------------------------------------------------------------- */
 .site-header {
@@ -849,5 +1038,14 @@ button, input, select, textarea {
 
   .auth-hero__art {
     display: none;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-header .btn-primary {
+    width: 100%;
   }
 }
