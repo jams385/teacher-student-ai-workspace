@@ -3,11 +3,15 @@
 {% block title %}Log in{% endblock %}
 
 {% block content %}
+<div class="container-narrow">
 <h1>Teacher log in</h1>
+<div class="card">
 <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
     <button type="submit">Log in</button>
 </form>
-<p><a href="{% url 'signup' %}">Need an account? Sign up</a></p>
+</div>
+<p class="text-muted"><a href="{% url 'signup' %}">Need an account? Sign up</a></p>
+</div>
 {% endblock %}

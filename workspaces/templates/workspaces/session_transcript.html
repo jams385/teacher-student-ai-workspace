@@ -3,15 +3,17 @@
 {% block title %}{{ student_session.display_name }} — Transcript{% endblock %}
 
 {% block content %}
-<p><a href="{% url 'workspace_dashboard' pk=workspace.pk %}">&larr; {{ workspace.name }} dashboard</a></p>
+<p><a class="back-link" href="{% url 'workspace_dashboard' pk=workspace.pk %}">&larr; {{ workspace.name }} dashboard</a></p>
 
 <h1>Transcript: {{ student_session.display_name }}</h1>
-<p>Joined {{ student_session.joined_at|date:"M j, Y g:i A" }}</p>
+<p class="text-muted">Joined {{ student_session.joined_at|date:"M j, Y g:i A" }}</p>
 
+<div class="card">
 <div id="message-list">
     {% include 'workspaces/partials/_messages.html' %}
 </div>
 {% if not chat_messages %}
-<p><em>No messages yet.</em></p>
+<p class="text-muted"><em>No messages yet.</em></p>
 {% endif %}
+</div>
 {% endblock %}

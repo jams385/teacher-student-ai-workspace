@@ -3,9 +3,11 @@
 {% block title %}Activate your account{% endblock %}
 
 {% block content %}
+<div class="container-narrow">
 <h1>Activate your student account</h1>
-<p>Your teacher gave you an activation code — enter it below along with a username and password of your choosing.</p>
+<p class="text-muted">Your teacher gave you an activation code — enter it below along with a username and password of your choosing.</p>
 
+<div class="card">
 <p><strong>What we collect here.</strong> A username and password you choose, and an email only if you choose to add one. Nothing else — no profile picture, and other students can never see your account or your work. Your name as your teacher entered it on their roster is what shows up on their dashboard; this form doesn't change that.</p>
 
 <form method="post">
@@ -13,5 +15,7 @@
     {{ form.as_p }}
     <button type="submit">Activate account</button>
 </form>
-<p>Already have an account? <a href="{% url 'student_login' %}">Log in</a> instead.</p>
+</div>
+<p class="text-muted">Already have an account? <a href="{% url 'student_login' %}">Log in</a> instead.</p>
+</div>
 {% endblock %}

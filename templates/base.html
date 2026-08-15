@@ -4,29 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Teacher-Student AI Workspace{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'workspaces/css/style.css' %}">
     <script src="{% static 'workspaces/vendor/htmx.min.js' %}" defer></script>
     {% django_htmx_script %}
 </head>
 <body>
     <header>
-        <nav>
+        <nav class="container">
             {% if user.is_authenticated and user.profile.role == 'student' %}
+                <a class="brand" href="{% url 'student_home' %}">Teacher-Student AI Workspace</a>
                 <a href="{% url 'student_home' %}">My workspaces</a>
                 <a href="{% url 'student_join' %}">Join a workspace</a>
-                <span>{{ user.username }}</span>
+                <span class="user">{{ user.username }}</span>
                 <form method="post" action="{% url 'logout' %}">
                     {% csrf_token %}
                     <input type="hidden" name="next" value="{% url 'student_login' %}">
                     <button type="submit">Log out</button>
                 </form>
             {% elif user.is_authenticated %}
+                <a class="brand" href="{% url 'workspace_list' %}">Teacher-Student AI Workspace</a>
                 <a href="{% url 'workspace_list' %}">Workspaces</a>
-                <span>{{ user.username }}</span>
+                <span class="user">{{ user.username }}</span>
                 <form method="post" action="{% url 'logout' %}">
                     {% csrf_token %}
                     <button type="submit">Log out</button>
                 </form>
             {% else %}
+                <a class="brand" href="{% url 'workspace_list' %}">Teacher-Student AI Workspace</a>
                 <a href="{% url 'workspace_list' %}">Workspaces</a>
                 <a href="{% url 'student_join' %}">Join a workspace</a>
                 <a href="{% url 'student_login' %}">Student log in</a>
@@ -36,15 +40,15 @@
         </nav>
     </header>
 
-    {% if messages %}
-        <ul class="messages">
-        {% for message in messages %}
-            <li class="{{ message.tags }}">{{ message }}</li>
-        {% endfor %}
-        </ul>
-    {% endif %}
+    <main class="container">
+        {% if messages %}
+            <ul class="messages">
+            {% for message in messages %}
+                <li class="{{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
 
-    <main>
         {% block content %}{% endblock %}
     </main>
 </body>

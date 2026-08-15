@@ -3,10 +3,14 @@
 {% block title %}New workspace{% endblock %}
 
 {% block content %}
+<div class="container-narrow">
 <h1>New workspace</h1>
+<div class="card">
 <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
     <button type="submit">Create workspace</button>
 </form>
+</div>
+</div>
 {% endblock %}

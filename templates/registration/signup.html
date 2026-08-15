@@ -3,11 +3,15 @@
 {% block title %}Sign up{% endblock %}
 
 {% block content %}
+<div class="container-narrow">
 <h1>Create a teacher account</h1>
+<div class="card">
 <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
     <button type="submit">Sign up</button>
 </form>
-<p><a href="{% url 'login' %}">Already have an account? Log in</a></p>
+</div>
+<p class="text-muted"><a href="{% url 'login' %}">Already have an account? Log in</a></p>
+</div>
 {% endblock %}

@@ -4,20 +4,20 @@
 
 {% block content %}
 <h1>{{ workspace.name }}</h1>
-<p>Mode: {{ workspace.get_mode_display }}</p>
-<p>Chatting as <strong>{{ student_session.display_name }}</strong></p>
+<p class="text-muted">{{ workspace.get_mode_display }} &middot; chatting as <strong>{{ student_session.display_name }}</strong></p>
 
 {% if workspace.mode == 'lecture' %}
+<div class="card">
 <section id="slideshow">
-    <h2>Live slideshow</h2>
+    <h2 style="margin-top: 0;">Live slideshow</h2>
     {% include 'workspaces/partials/_slideshow.html' %}
 
     <div id="slideshow-viewer" hidden>
-        <img id="slide-image" alt="Current slide" style="max-width: 100%;">
+        <img id="slide-image" alt="Current slide">
         <div>
-            <button type="button" id="slide-prev">&larr; Prev</button>
-            <button type="button" id="slide-next">Next &rarr;</button>
-            <button type="button" id="slide-jump-latest" hidden>Jump to latest &#9654;</button>
+            <button type="button" class="btn-secondary" id="slide-prev">&larr; Prev</button>
+            <button type="button" class="btn-secondary" id="slide-next">Next &rarr;</button>
+            <button type="button" class="btn-secondary" id="slide-jump-latest" hidden>Jump to latest &#9654;</button>
         </div>
     </div>
 
@@ -105,17 +105,21 @@
         })();
     </script>
 </section>
+</div>
 
+<div class="card">
 <section id="lecture-outline">
-    <h2>Lecture outline</h2>
+    <h2 style="margin-top: 0;">Lecture outline</h2>
     {% if workspace.lecture_outline %}
         <div>{{ workspace.lecture_outline|linebreaksbr }}</div>
     {% else %}
-        <p><em>Your teacher hasn't generated a lecture outline yet.</em></p>
+        <p class="text-muted"><em>Your teacher hasn't generated a lecture outline yet.</em></p>
     {% endif %}
 </section>
+</div>
 {% endif %}
 
+<div class="card">
 <div id="message-list">
     {% include 'workspaces/partials/_messages.html' %}
 </div>
@@ -130,4 +134,5 @@
     <input type="text" name="message" placeholder="Ask a question..." required autocomplete="off">
     <button type="submit">Send</button>
 </form>
+</div>
 {% endblock %}

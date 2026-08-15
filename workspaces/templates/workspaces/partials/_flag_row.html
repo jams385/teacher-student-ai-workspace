@@ -8,15 +8,16 @@
     </td>
     <td>
         {% if flag.reviewed %}
-            Reviewed
+            <span class="text-muted">Reviewed</span>
         {% else %}
             <form
+                class="inline-form"
                 hx-post="{% url 'flag_mark_reviewed' pk=workspace.pk flag_pk=flag.pk %}"
                 hx-target="#flag-row-{{ flag.pk }}"
                 hx-swap="outerHTML"
             >
                 {% csrf_token %}
-                <button type="submit">Mark reviewed</button>
+                <button type="submit" class="btn-secondary">Mark reviewed</button>
             </form>
         {% endif %}
     </td>

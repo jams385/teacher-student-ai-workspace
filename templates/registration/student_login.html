@@ -3,12 +3,16 @@
 {% block title %}Student log in{% endblock %}
 
 {% block content %}
+<div class="container-narrow">
 <h1>Student log in</h1>
+<div class="card">
 <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
     <button type="submit">Log in</button>
 </form>
-<p>Don't have an account? Ask your teacher for an activation code, then <a href="{% url 'student_signup_activate' %}">activate your account</a>.</p>
-<p>Just joining for one class, no account needed? <a href="{% url 'student_join' %}">Join with a code</a>.</p>
+</div>
+<p class="text-muted">Don't have an account? Ask your teacher for an activation code, then <a href="{% url 'student_signup_activate' %}">activate your account</a>.</p>
+<p class="text-muted">Just joining for one class, no account needed? <a href="{% url 'student_join' %}">Join with a code</a>.</p>
+</div>
 {% endblock %}
