@@ -920,33 +920,3 @@ class LiveStatusTests(TestCase):
         self._join_as_student()
         response = self.client.get(reverse('live_status'))
         self.assertContains(response, 'slide 3 of 4')
-
-
-class HomeViewTests(TestCase):
-    """`/` is now the public landing page — see workspaces.views.home."""
-
-    def test_anonymous_visitor_sees_landing_page(self):
-        response = self.client.get(reverse('home'))
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'workspaces/home.html')
-
-    def test_authenticated_teacher_redirects_to_workspace_list(self):
-        _create_teacher('teacher')
-        self.client.login(username='teacher', password='pw')
-        response = self.client.get(reverse('home'))
-        self.assertRedirects(response, reverse('workspace_list'))
-
-    def test_authenticated_student_redirects_to_student_home(self):
-        _create_student('student')
-        self.client.login(username='student', password='pw')
-        response = self.client.get(reverse('home'))
-        self.assertRedirects(response, reverse('student_home'))
-
-    def test_profile_less_user_chain_redirects_to_login(self):
-        # Mirrors the createsuperuser edge case documented on
-        # workspaces.decorators._role_required.
-        get_user_model().objects.create_user(username='noprofile', password='pw')
-        self.client.login(username='noprofile', password='pw')
-        response = self.client.get(reverse('home'), follow=True)
-        self.assertRedirects(response, f"{reverse('login')}?next={reverse('workspace_list')}")
-        self.assertContains(response, "set up yet")

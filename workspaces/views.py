@@ -24,13 +24,6 @@ from .utils import (
 )
 
 
-def home(request):
-    """Public marketing landing page at `/`."""
-    if request.user.is_authenticated:
-        return redirect('student_home' if _is_student(request.user) else 'workspace_list')
-    return render(request, 'workspaces/home.html')
-
-
 def teacher_signup(request):
     """Self-serve account creation for teachers."""
     if request.method == 'POST':
