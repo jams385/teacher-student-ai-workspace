@@ -270,8 +270,16 @@ def generate_lecture_outline(request, pk):
     pooling send_message() already does for course_material_context. Plain
     POST + redirect, matching workspace_detail.html's non-HTMX style —
     HTMX in this codebase is reserved for chat send and the dashboard's
-    flag-review row swap."""
+    flag-review row swap.
+
+    Two different pages can trigger this now (workspace_detail's "Generate
+    outline" card, and live_presenter's "AI Summary" panel — same feature,
+    same data, just surfaced in a second place per CLAUDE.md) — a hidden
+    `source` field on the form says which one to redirect back to, so a
+    teacher generating it mid-presentation doesn't get bounced off the live
+    screen."""
     workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
+    redirect_target = 'live_presenter' if request.POST.get('source') == 'live' else 'workspace_detail'
 
     material_text = '\n\n'.join(
         material.extracted_text
@@ -280,19 +288,19 @@ def generate_lecture_outline(request, pk):
     )
     if not material_text:
         messages.warning(request, "Upload course materials with extractable text before generating an outline.")
-        return redirect('workspace_detail', pk=workspace.pk)
+        return redirect(redirect_target, pk=workspace.pk)
 
     try:
         outline = ai_client.summarize_lecture_material(material_text)
     except ai_client.AIClientError as e:
         messages.error(request, f"Couldn't generate the outline: {e}")
-        return redirect('workspace_detail', pk=workspace.pk)
+        return redirect(redirect_target, pk=workspace.pk)
 
     workspace.lecture_outline = outline
     workspace.lecture_outline_generated_at = timezone.now()
     workspace.save(update_fields=['lecture_outline', 'lecture_outline_generated_at'])
     messages.success(request, 'Lecture outline generated.')
-    return redirect('workspace_detail', pk=workspace.pk)
+    return redirect(redirect_target, pk=workspace.pk)
 
 
 @teacher_required
@@ -370,15 +378,23 @@ def stop_presenting(request, pk):
     return render(request, 'workspaces/partials/_presenter.html', _presenter_context(workspace))
 
 
+def _advance_slide(workspace, delta):
+    """Shared by the inline presenter card's Prev/Next (workspace_detail)
+    and the dedicated live-presenting screen's Prev/Next (live_presenter) —
+    moves live_slide_index by delta, clamped to the deck's bounds. No-ops
+    if nothing is currently live (e.g. another tab already ended it)."""
+    if workspace.live_material_id:
+        last_index = workspace.live_material.slides.count() - 1
+        workspace.live_slide_index = max(0, min(workspace.live_slide_index + delta, last_index))
+        workspace.save(update_fields=['live_slide_index'])
+
+
 @teacher_required
 @require_POST
 def presenter_next(request, pk):
     """Teacher-triggered: advance the live slide by one, clamped to the last slide."""
     workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
-    if workspace.live_material_id:
-        last_index = workspace.live_material.slides.count() - 1
-        workspace.live_slide_index = min(workspace.live_slide_index + 1, last_index)
-        workspace.save(update_fields=['live_slide_index'])
+    _advance_slide(workspace, 1)
     return render(request, 'workspaces/partials/_presenter.html', _presenter_context(workspace))
 
 
@@ -387,10 +403,77 @@ def presenter_next(request, pk):
 def presenter_prev(request, pk):
     """Teacher-triggered: go back one live slide, clamped to the first slide."""
     workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
-    if workspace.live_material_id:
-        workspace.live_slide_index = max(workspace.live_slide_index - 1, 0)
-        workspace.save(update_fields=['live_slide_index'])
+    _advance_slide(workspace, -1)
     return render(request, 'workspaces/partials/_presenter.html', _presenter_context(workspace))
+
+
+def _live_stage_context(workspace):
+    return {
+        'workspace': workspace,
+        'slide_count': workspace.live_material.slides.count() if workspace.live_material_id else 0,
+        'slides': workspace.live_material.slides.all() if workspace.live_material_id else [],
+    }
+
+
+@teacher_required
+def live_presenter(request, pk):
+    """Dedicated full-screen view for actively presenting Lecture Mode
+    content — a bigger slide stage (plus a filmstrip of the deck) next to
+    an AI Summary panel (the same whole-deck outline feature as
+    workspace_detail, just surfaced here too — see generate_lecture_outline).
+    Only reachable while a presentation is actually live; the small inline
+    presenter card on workspace_detail is still how a teacher picks a
+    material and starts presenting in the first place — this screen doesn't
+    duplicate that.
+
+    Deliberately does NOT show student chat content anywhere on this
+    screen — a teacher watching a live feed of what students are typing
+    while presenting reads as exactly the kind of raw-firehose monitoring
+    CLAUDE.md's minors data-minimization note warns against; a teacher who
+    wants that already has session_transcript."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
+    if not workspace.live_material_id:
+        messages.info(request, "You're not currently presenting.")
+        return redirect('workspace_detail', pk=workspace.pk)
+    return render(request, 'workspaces/workspace_presenter_live.html', _live_stage_context(workspace))
+
+
+@teacher_required
+@require_POST
+def live_presenter_next(request, pk):
+    """Prev/Next on the live-presenting screen mutate the same
+    live_slide_index as the inline card's buttons (_advance_slide), just
+    re-rendering the bigger _live_stage.html partial instead of
+    _presenter.html — kept as separate views (rather than branching one
+    view on the request) to match this codebase's existing convention of
+    one explicit view per surface (e.g. student_login/teacher_login)."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
+    _advance_slide(workspace, 1)
+    return render(request, 'workspaces/partials/_live_stage.html', _live_stage_context(workspace))
+
+
+@teacher_required
+@require_POST
+def live_presenter_prev(request, pk):
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
+    _advance_slide(workspace, -1)
+    return render(request, 'workspaces/partials/_live_stage.html', _live_stage_context(workspace))
+
+
+@teacher_required
+@require_POST
+def end_lecture(request, pk):
+    """Teacher-triggered, from the dedicated live-presenting screen: same
+    effect as stop_presenting, but redirects back to workspace detail
+    afterward instead of htmx-swapping a partial in place — there's nothing
+    left for this screen to show once presenting ends. Plain POST +
+    redirect, matching generate_lecture_outline's non-HTMX style."""
+    workspace = get_object_or_404(Workspace, pk=pk, teacher=request.user, mode=Workspace.Mode.LECTURE)
+    workspace.live_material = None
+    workspace.live_slide_index = None
+    workspace.save(update_fields=['live_material', 'live_slide_index'])
+    messages.success(request, 'Lecture ended.')
+    return redirect('workspace_detail', pk=workspace.pk)
 
 
 def slide_image(request, pk, material_pk, index):

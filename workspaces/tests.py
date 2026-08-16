@@ -944,6 +944,99 @@ class GenerateLectureOutlineTests(TestCase):
         response = self.client.post(reverse('generate_lecture_outline', args=[self.workspace.pk]))
         self.assertEqual(response.status_code, 404)
 
+    @patch('workspaces.views.ai_client.summarize_lecture_material', return_value='# Outline\n- point one')
+    def test_source_live_redirects_to_live_presenter(self, mock_summarize):
+        """The live-presenting screen's own "Generate AI summary" form
+        posts source=live so the teacher lands back on that screen, not
+        workspace_detail — see generate_lecture_outline's docstring."""
+        response = self.client.post(reverse('generate_lecture_outline', args=[self.workspace.pk]), {'source': 'live'})
+        self.assertRedirects(response, reverse('live_presenter', args=[self.workspace.pk]), fetch_redirect_response=False)
+
+    def test_no_source_still_redirects_to_workspace_detail(self):
+        response = self.client.post(reverse('generate_lecture_outline', args=[self.workspace.pk]))
+        self.assertRedirects(response, reverse('workspace_detail', args=[self.workspace.pk]))
+
+
+class LivePresenterViewsTests(TestCase):
+    """The dedicated full-screen live-presenting view (live_presenter) and
+    its own Prev/Next/End/questions endpoints — the full-screen sibling of
+    PresenterViewsTests' inline-card endpoints above."""
+
+    def setUp(self):
+        self.teacher = _create_teacher('teacher')
+        self.workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Lecture Class', mode=Workspace.Mode.LECTURE, join_code='LIVEPR',
+        )
+        self.material = Material.objects.create(workspace=self.workspace, file='workspace_1/deck.pdf', extracted_text='text')
+        for i in range(3):
+            Slide.objects.create(material=self.material, index=i, image=f'workspace_1/material_1/slide_{i:04d}.png')
+        self.client.login(username='teacher', password='pw')
+
+    def _start_presenting(self):
+        self.workspace.live_material = self.material
+        self.workspace.live_slide_index = 0
+        self.workspace.save(update_fields=['live_material', 'live_slide_index'])
+
+    def test_redirects_when_not_presenting(self):
+        response = self.client.get(reverse('live_presenter', args=[self.workspace.pk]))
+        self.assertRedirects(response, reverse('workspace_detail', args=[self.workspace.pk]))
+
+    def test_renders_when_presenting(self):
+        self._start_presenting()
+        response = self.client.get(reverse('live_presenter', args=[self.workspace.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'LIVE')
+        self.assertContains(response, 'End Lecture')
+
+    def test_other_teacher_404s(self):
+        self._start_presenting()
+        _create_teacher('other')
+        self.client.login(username='other', password='pw')
+        response = self.client.get(reverse('live_presenter', args=[self.workspace.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_non_lecture_workspace_404s(self):
+        other_workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Socratic Class', mode=Workspace.Mode.SOCRATIC, join_code='LIVSOC',
+        )
+        response = self.client.get(reverse('live_presenter', args=[other_workspace.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_next_and_prev_clamp_at_bounds_and_render_stage_partial(self):
+        self._start_presenting()
+
+        response = self.client.post(reverse('live_presenter_prev', args=[self.workspace.pk]))  # already at 0 — no-op
+        self.assertEqual(response.status_code, 200)
+        self.workspace.refresh_from_db()
+        self.assertEqual(self.workspace.live_slide_index, 0)
+
+        for _ in range(5):  # more than the 3 slides available — clamps at the last index (2)
+            self.client.post(reverse('live_presenter_next', args=[self.workspace.pk]))
+        self.workspace.refresh_from_db()
+        self.assertEqual(self.workspace.live_slide_index, 2)
+
+    def test_end_lecture_clears_live_state_and_redirects(self):
+        self._start_presenting()
+        response = self.client.post(reverse('end_lecture', args=[self.workspace.pk]))
+        self.assertRedirects(response, reverse('workspace_detail', args=[self.workspace.pk]))
+        self.workspace.refresh_from_db()
+        self.assertIsNone(self.workspace.live_material_id)
+        self.assertIsNone(self.workspace.live_slide_index)
+
+    def test_no_student_message_content_shown_on_live_presenter_screen(self):
+        """This screen deliberately shows no student chat content at all —
+        see live_presenter's docstring. Regression guard against a future
+        edit accidentally reintroducing a student-message feed here."""
+        self._start_presenting()
+        session = StudentSession.objects.create(workspace=self.workspace, display_name='Alex', session_id=None)
+        Message.objects.create(
+            workspace=self.workspace, student_session=session, role=Message.Role.STUDENT,
+            content='A very distinctive student question about photosynthesis',
+        )
+        response = self.client.get(reverse('live_presenter', args=[self.workspace.pk]))
+        self.assertNotContains(response, 'A very distinctive student question about photosynthesis')
+        self.assertNotContains(response, 'Alex')
+
 
 class MaterialDeleteTests(TestCase):
     def setUp(self):

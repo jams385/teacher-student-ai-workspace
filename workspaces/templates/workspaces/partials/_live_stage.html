@@ -1,0 +1,55 @@
+{% comment %}
+Swapped into #live-stage by live_presenter_next/live_presenter_prev.
+Deliberately no JS here (unlike chat.html's student-facing slideshow,
+which needs client state for "follow live vs. navigate backward") — the
+teacher is the one driving the presentation, so every Prev/Next click is
+just a fresh server-rendered htmx swap, same zero-JS approach as the
+inline _presenter.html card this screen is the full-screen sibling of.
+{% endcomment %}
+{% if workspace.live_material_id %}
+<div class="lecture-stage__frame">
+    <img
+        src="{% url 'slide_image' pk=workspace.pk material_pk=workspace.live_material_id index=workspace.live_slide_index %}"
+        alt="Current slide"
+        class="lecture-stage__image"
+    >
+</div>
+
+{% if slides|length > 1 %}
+<div class="lecture-stage__filmstrip">
+    {% for slide in slides %}
+    <div class="lecture-stage__filmstrip-item{% if slide.index == workspace.live_slide_index %} is-current{% endif %}">
+        <img
+            src="{% url 'slide_image' pk=workspace.pk material_pk=workspace.live_material_id index=slide.index %}"
+            alt="Slide {{ slide.index|add:1 }}"
+        >
+        <span>{{ slide.index|add:1 }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="lecture-stage__controls">
+    <form
+        hx-post="{% url 'live_presenter_prev' pk=workspace.pk %}"
+        hx-target="#live-stage"
+        hx-swap="innerHTML"
+    >
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary btn-sm" {% if workspace.live_slide_index == 0 %}disabled{% endif %}>&larr; Prev</button>
+    </form>
+    <p class="lecture-stage__caption">Slide {{ workspace.live_slide_index|add:1 }} of {{ slide_count }}</p>
+    <form
+        hx-post="{% url 'live_presenter_next' pk=workspace.pk %}"
+        hx-target="#live-stage"
+        hx-swap="innerHTML"
+    >
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary btn-sm" {% if workspace.live_slide_index|add:1 >= slide_count %}disabled{% endif %}>Next &rarr;</button>
+    </form>
+</div>
+{% else %}
+<div class="lecture-stage__ended">
+    <p>This lecture has ended. <a href="{% url 'workspace_detail' pk=workspace.pk %}">Return to workspace</a></p>
+</div>
+{% endif %}

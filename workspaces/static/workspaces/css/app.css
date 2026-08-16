@@ -1892,13 +1892,20 @@ button, input, select, textarea {
 }
 
 /* Modifier, not a change to the base .chat-window — the live chat pages
-   (this one) benefit from a capped, internally-scrolling pane since it
-   sits fixed-height next to the slide stage; the read-only transcript
-   pages reuse plain .chat-window and should keep growing with the page
-   instead. */
+   (this one) benefit from a capped, internally-scrolling pane rather than
+   growing taller with every new message; the read-only transcript pages
+   reuse plain .chat-window and should keep growing with the page instead. */
 .chat-window--scroll {
   max-height: 420px;
   overflow-y: auto;
+}
+
+/* Second modifier, stacked on top of --scroll: Socratic/Homework Mode's
+   chat window is the only content on the page (no slide stage competing
+   for space, unlike Lecture Mode's tabbed panel --scroll was originally
+   sized for), so it gets a taller cap rather than reusing 420px verbatim. */
+.chat-window--scroll-lg {
+  max-height: 560px;
 }
 
 .chat-send-form {
@@ -1991,6 +1998,117 @@ button, input, select, textarea {
 
 .ai-math--block math {
   font-size: 1.15em;
+}
+
+/* --------------------------------------------------------------------------
+   Live presenter view (workspace_presenter_live.html) — a dedicated
+   full-screen sibling of the small inline presenter card on workspace
+   detail (_presenter.html), for while a teacher is actively presenting.
+   From a reference mockup, not Figma.
+
+   Stacked full-width, not a two-column grid like chat.html's .lecture-layout
+   — that split exists there because the right column holds an active chat
+   panel competing for space; this screen shows no student content at all
+   (see live_presenter's docstring), so the slide stage gets the full
+   .site-main width to itself, with the AI Summary card as a plain
+   full-width section below it, same shape as workspace_detail's own
+   "Lecture outline" card.
+   -------------------------------------------------------------------------- */
+.badge--live {
+  background: var(--color-white);
+  border-color: var(--color-primary-light-border);
+  color: var(--color-primary-light-border);
+}
+
+.presenter-live__layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-top: var(--space-2);
+}
+
+/* Quick-jump-free filmstrip (thumbnails are visual position feedback only —
+   not clickable in this first pass, since there's no existing "jump to
+   slide N" action to wire them to, only the relative Prev/Next this screen
+   already reuses from _advance_slide). Horizontal-scrolls on overflow
+   rather than wrapping, same reasoning as .material-table-wrap. */
+.lecture-stage__filmstrip {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+  /* Flex items default to min-width: auto, not 0 — without this, a
+     .lecture-stage narrower than the filmstrip's own intrinsic content
+     width (5+ fixed-width thumbnails) gets stretched to fit that content
+     instead of letting overflow-x: auto clip and scroll it, the same
+     flexbox gotcha .material-table-wrap's `contain: paint` works around
+     for a grid context. */
+  min-width: 0;
+}
+
+.lecture-stage__filmstrip-item {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  width: 72px;
+}
+
+.lecture-stage__filmstrip-item img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-gray-200);
+}
+
+.lecture-stage__filmstrip-item.is-current img {
+  border-color: var(--color-primary-light-border);
+}
+
+.lecture-stage__filmstrip-item span {
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-dark);
+}
+
+/* Shown in place of the slide frame/filmstrip/controls once presenting has
+   ended (e.g. stopped from another tab) while this screen is still open —
+   same shape as .lecture-stage__placeholder, but unconditionally visible
+   rather than depending on slideshow.js's [hidden]-toggling, since this
+   screen has no client-side JS at all (see _live_stage.html). */
+.lecture-stage__ended {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  background: var(--color-gray-100);
+  border: 1px dashed var(--color-gray-200);
+  border-radius: var(--radius-card);
+  color: var(--color-accent-dark);
+  text-align: center;
+  padding: var(--space-5);
+}
+
+.presenter-live__panel {
+  border: 1px solid var(--color-gray-200);
+}
+
+.presenter-live__panel-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-md);
+}
+
+.presenter-live__panel-hint {
+  margin: 0 0 var(--space-3);
+  color: var(--color-accent-dark);
+  font-size: var(--font-size-sm);
+}
+
+.presenter-live__summary {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-gray-200);
 }
 
 /* --------------------------------------------------------------------------
@@ -2207,11 +2325,21 @@ button, input, select, textarea {
     max-width: 90%;
   }
 
+  /* minmax(0, 1fr), not plain 1fr — a bare 1fr track has an implicit
+     min-width: auto, so a grid item with wide intrinsic content (e.g. the
+     live presenter's fixed-width slide filmstrip) can still blow out the
+     track and overflow the page, same reasoning as the desktop grid's own
+     minmax(0, ...) tracks above. Caught via live_presenter's filmstrip at
+     390px, but this track is shared by chat.html's .lecture-layout too. */
   .lecture-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .chat-window--scroll {
     max-height: 320px;
+  }
+
+  .chat-window--scroll-lg {
+    max-height: 400px;
   }
 }

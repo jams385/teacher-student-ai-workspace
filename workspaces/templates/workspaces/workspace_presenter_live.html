@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% load chat_extras %}
+
+{% block title %}Presenting: {{ workspace.name }}{% endblock %}
+
+{% block content %}
+<a href="{% url 'workspace_detail' pk=workspace.pk %}" class="back-link">&larr; Back to workspace</a>
+
+<div class="page-header">
+    <div>
+        <h1>{{ workspace.name }}</h1>
+        <p class="page-header__subtext">
+            <span class="badge badge--live">&#9679; LIVE</span>
+            <span class="badge badge--{{ workspace.mode }}">{{ workspace.get_mode_display }}</span>
+            &middot; Presenting {{ workspace.live_material.file }}
+        </p>
+    </div>
+    <form method="post" action="{% url 'end_lecture' pk=workspace.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">End Lecture</button>
+    </form>
+</div>
+
+<div class="presenter-live__layout">
+    <div class="lecture-stage presenter-live__stage" id="live-stage">
+        {% include 'workspaces/partials/_live_stage.html' %}
+    </div>
+
+    <div class="card presenter-live__panel">
+        <h2 class="presenter-live__panel-title">AI Summary</h2>
+        <p class="presenter-live__panel-hint">Generate a quick overview of the lecture so far &mdash; students can access it from their view.</p>
+        <form method="post" action="{% url 'generate_lecture_outline' pk=workspace.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="source" value="live">
+            <button type="submit" class="btn btn-primary btn-sm">
+                {% if workspace.lecture_outline %}Regenerate AI summary{% else %}Generate AI summary{% endif %}
+            </button>
+        </form>
+        {% if workspace.lecture_outline %}
+        <div class="lecture-panel__summary presenter-live__summary">{{ workspace.lecture_outline|render_ai_content }}</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

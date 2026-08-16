@@ -179,7 +179,7 @@
     })();
 </script>
 {% else %}
-<div id="message-list" class="chat-window">
+<div id="message-list" class="chat-window chat-window--scroll chat-window--scroll-lg">
     {% include 'workspaces/partials/_messages.html' %}
 </div>
 
@@ -213,5 +213,16 @@
             list.scrollTop = list.scrollHeight;
         }
     });
+
+    // Same reasoning, but for the initial page load: a capped, scrollable
+    // #message-list (.chat-window--scroll) would otherwise open showing
+    // the oldest messages at the top, not the most recent ones — the
+    // opposite of what a returning student wants to see first.
+    (function () {
+        var list = document.getElementById('message-list');
+        if (list) {
+            list.scrollTop = list.scrollHeight;
+        }
+    })();
 </script>
 {% endblock %}

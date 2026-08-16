@@ -1,5 +1,6 @@
 {% if workspace.live_material_id %}
     <p class="workspace-detail-section__subtext">Presenting: {{ workspace.live_material.file }} &mdash; slide {{ workspace.live_slide_index|add:1 }} of {{ slide_count }}</p>
+    <a href="{% url 'live_presenter' pk=workspace.pk %}" class="btn btn-primary btn-sm" style="display: block; width: fit-content; margin-bottom: var(--space-3);">Open live presenter view &rarr;</a>
     <img
         src="{% url 'slide_image' pk=workspace.pk material_pk=workspace.live_material_id index=workspace.live_slide_index %}"
         alt="Current slide"
