@@ -1,0 +1,12 @@
+{% include 'workspaces/partials/_message.html' %}
+<div
+    class="chat-message chat-message-ai chat-message-thinking"
+    hx-get="{% url 'get_ai_reply' message_pk=message.pk %}"
+    hx-trigger="load"
+    hx-swap="outerHTML"
+>
+    <div class="chat-message-author">AI</div>
+    <div class="chat-typing" role="status" aria-label="AI is thinking">
+        <span></span><span></span><span></span>
+    </div>
+</div>

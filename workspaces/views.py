@@ -686,12 +686,16 @@ def student_chat(request):
 
 @require_POST
 def send_message(request):
-    """HTMX endpoint: student sends a message, gets the AI's reply appended.
-
-    Calls ai_client.get_ai_response exactly per the architecture rule in
-    CLAUDE.md — mode comes from the workspace record, never from the
-    request. Returns just the new chat bubbles (a partial), not a full page,
-    for HTMX to swap into #message-list.
+    """HTMX endpoint: student sends a message. Deliberately does *not* call
+    the AI here — that's the slow part (a real network round-trip to the
+    provider), and this used to block on it before returning anything at
+    all, so a student's own message sat invisible until the AI had *also*
+    already finished replying. This endpoint now only saves the student's
+    message (fast — one DB write) and returns it immediately, plus a
+    "thinking" placeholder bubble that lazy-loads the actual reply via
+    get_ai_reply below (hx-trigger="load" on the placeholder — a standard
+    htmx pattern, fires as soon as the placeholder lands in the DOM). The
+    student's bubble appears instantly; the AI's shows up once it's ready.
     """
     student_session = _get_student_session(request)
     if student_session is None:
@@ -705,17 +709,52 @@ def send_message(request):
     if not text:
         return HttpResponse('')  # nothing to send — no-op, no swap content
 
+    student_message = Message.objects.create(
+        workspace=student_session.workspace,
+        student_session=student_session,
+        role=Message.Role.STUDENT,
+        content=text,
+    )
+
+    # Detection-only: never influences the AI call in get_ai_reply below,
+    # only surfaces the message to the teacher dashboard for review. See
+    # moderation.py.
+    for matched_text in moderation.find_jailbreak_attempts(text):
+        Flag.objects.create(message=student_message, matched_text=matched_text[:255])
+
+    return render(request, 'workspaces/partials/_send_response.html', {
+        'message': student_message,
+    })
+
+
+def get_ai_reply(request, message_pk):
+    """HTMX follow-up triggered by the "thinking" placeholder send_message
+    just rendered (hx-trigger="load", hx-swap="outerHTML" — this response
+    replaces the placeholder in place). This is where the actual AI call
+    happens, exactly per the architecture rule in CLAUDE.md — mode comes
+    from the workspace record, never from the request.
+
+    message_pk scopes this to one specific student message (rather than
+    e.g. "the latest one for this session") so there's no ambiguity if a
+    student somehow has two of these in flight at once.
+    """
+    student_session = _get_student_session(request)
+    if student_session is None:
+        response = HttpResponse(status=204)
+        response['HX-Redirect'] = reverse('student_join')
+        return response
+
+    student_message = get_object_or_404(Message, pk=message_pk, student_session=student_session)
     workspace = student_session.workspace
 
-    # Prior turns, in Gemini's role naming — built *before* saving the new
-    # student message below, since get_ai_response takes the new message
-    # separately (see ai_client.py).
+    # Every prior turn *except* this one, in Gemini's role naming —
+    # get_ai_response takes the new message separately (see ai_client.py).
     conversation_history = [
         {
             'role': 'user' if m.role == Message.Role.STUDENT else 'model',
             'parts': [{'text': m.content}],
         }
-        for m in student_session.messages.all()
+        for m in student_session.messages.exclude(pk=student_message.pk)
     ]
 
     course_material_context = '\n\n'.join(
@@ -724,27 +763,12 @@ def send_message(request):
         if material.extracted_text
     )
 
-    student_message = Message.objects.create(
-        workspace=workspace,
-        student_session=student_session,
-        role=Message.Role.STUDENT,
-        content=text,
-    )
-
-    # Detection-only: never influences the AI call below, only surfaces the
-    # message to the teacher dashboard for review. See moderation.py.
-    for matched_text in moderation.find_jailbreak_attempts(text):
-        Flag.objects.create(message=student_message, matched_text=matched_text[:255])
-
     try:
         reply_text = ai_client.get_ai_response(
-            workspace.mode, conversation_history, text, course_material_context
+            workspace.mode, conversation_history, student_message.content, course_material_context
         )
     except ai_client.AIClientError:
-        return render(request, 'workspaces/partials/_messages.html', {
-            'chat_messages': [student_message],
-            'error': True,
-        })
+        return render(request, 'workspaces/partials/_chat_error.html')
 
     ai_message = Message.objects.create(
         workspace=workspace,
@@ -753,9 +777,7 @@ def send_message(request):
         content=reply_text,
     )
 
-    return render(request, 'workspaces/partials/_messages.html', {
-        'chat_messages': [student_message, ai_message],
-    })
+    return render(request, 'workspaces/partials/_message.html', {'message': ai_message})
 
 
 # --- Student accounts -------------------------------------------------

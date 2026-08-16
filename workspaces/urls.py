@@ -24,6 +24,7 @@ urlpatterns = [
     path('join/', views.student_join, name='student_join'),
     path('chat/', views.student_chat, name='student_chat'),
     path('chat/send/', views.send_message, name='send_message'),
+    path('chat/reply/<int:message_pk>/', views.get_ai_reply, name='get_ai_reply'),
     path('chat/live-status/', views.live_status, name='live_status'),
     path('student/login/', views.student_login, name='student_login'),
     path('student/signup/', views.student_signup, name='student_signup'),

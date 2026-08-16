@@ -125,6 +125,19 @@ Gemini's replies (and `ai_client.summarize_lecture_material`'s lecture outline, 
 - **Only ever applied to `role == 'ai'` content** — a student's own typed message stays on the old plain `linebreaksbr` treatment (`_message.html`'s `{% if message.role == 'ai' %}` branch). A student typing "it costs $5" shouldn't risk being run through math/markdown parsing at all, and there's no reason to.
 - Wired into all three `_message.html` call sites (`chat.html`, `session_transcript.html`, `student_workspace_transcript.html`) for free, since they share the partial, plus `chat.html`'s "Lesson summary" tab (`workspace.lecture_outline`, same model-generated-Markdown situation). The teacher dashboard's flagged-message preview (`_flag_row.html`) deliberately still shows raw `truncatechars` text, not rendered HTML — that's a short excerpt for scanning, not a place to spend rendering cost or risk.
 
+## Chat send/reply flow (instant bubble + "thinking" indicator)
+
+`send_message` used to do the whole round trip synchronously — save the student's message, call the AI, save its reply, return both bubbles in one response — so the student's own message sat invisible until the AI had *also* already finished replying (the real network call to Gemini, often the slowest part of the whole request). This is now two separate requests, chained via a standard htmx lazy-load pattern:
+
+1. **`send_message`** (`POST /chat/send/`) — saves the student's message and jailbreak-flags it (unchanged logic, just no `ai_client` call here anymore), then immediately returns that message's bubble plus a "thinking" placeholder bubble (`_send_response.html`). The placeholder carries `hx-get="{% url 'get_ai_reply' ... %}" hx-trigger="load" hx-swap="outerHTML"` — htmx fires that GET the instant the placeholder lands in the DOM, no polling.
+2. **`get_ai_reply`** (`GET /chat/reply/<message_pk>/`) — the slow part: builds conversation history (every prior message *except* the one being replied to — `.exclude(pk=...)`, since by the time this runs the student's message already exists in the DB), calls `ai_client.get_ai_response` exactly per the architecture rule above, saves the AI `Message`, and returns its bubble — replacing the placeholder in place (`outerHTML`). On `AIClientError`, returns `_chat_error.html` instead (extracted from `_messages.html` so both the live-swap error path and the older full-page error rendering share one template).
+
+Because the form's own htmx request (step 1) is now fast (one DB write, no network call), `hx-on="htmx:afterRequest: this.reset()"` clears the input almost immediately — a student can keep typing while the AI is still "thinking" on their last message, rather than the input staying blocked until the reply lands.
+
+The "thinking" placeholder (`.chat-message-thinking` + `.chat-typing`) is a plain 3-dot CSS `@keyframes` bounce, no JS/library — same shape as a real `.chat-message-ai` bubble so nothing jumps in size when it's swapped for the actual reply. Respects `prefers-reduced-motion`. `chat.html` also gained a small `htmx:afterSwap` listener that scrolls `#message-list` to its bottom, scoped to swaps that actually land inside `#message-list` (so it doesn't fire on Lecture Mode's unrelated 4s `#live-status` poll and yank the scroll position if a student has scrolled up to reread something) — matters most in Lecture Mode, where the chat pane is a capped, internally-scrolling `.chat-window--scroll` next to the fixed-height slide stage.
+
+`get_ai_reply` scopes its `Message` lookup to `student_session=` the requesting session's own (`get_object_or_404`), same tamper-scoping convention used elsewhere (e.g. `student_workspace_transcript`) — a message_pk belonging to another session 404s rather than leaking whose message it was.
+
 ## Explicitly out of scope for MVP (don't build unless asked)
 
 - Custom mode editor / teacher-authored prompts

@@ -1662,6 +1662,56 @@ button, input, select, textarea {
   margin-bottom: var(--space-1);
 }
 
+/* The "AI is thinking" placeholder (see _send_response.html) — same shape
+   as a real .chat-message-ai bubble so nothing jumps in size when htmx
+   swaps it for the actual reply a moment later. */
+.chat-message-thinking {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: var(--space-1) 0;
+}
+
+.chat-typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-accent-dark);
+  opacity: .5;
+  animation: chat-typing-bounce 1.2s infinite ease-in-out;
+}
+
+.chat-typing span:nth-child(2) {
+  animation-delay: .15s;
+}
+
+.chat-typing span:nth-child(3) {
+  animation-delay: .3s;
+}
+
+@keyframes chat-typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: .5;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-typing span {
+    animation: none;
+    opacity: .7;
+  }
+}
+
 /* Only the teacher's transcript view ever renders this (show_flags=False
    for a student's own transcript — see session_transcript). One .badge
    pill per flag, not one pill listing every match, since a message can

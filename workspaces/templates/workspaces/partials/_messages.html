@@ -2,7 +2,5 @@
     {% include 'workspaces/partials/_message.html' %}
 {% endfor %}
 {% if error %}
-<div class="chat-message chat-message-error">
-    <em>Something went wrong getting a response. Please try again.</em>
-</div>
+    {% include 'workspaces/partials/_chat_error.html' %}
 {% endif %}

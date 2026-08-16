@@ -195,4 +195,23 @@
     <button type="submit" class="btn btn-primary">Send</button>
 </form>
 {% endif %}
+
+<script>
+    // Keep the latest bubble in view — both when a message is first
+    // appended (hx-target="#message-list" on the send form) and when the
+    // "thinking" placeholder is later replaced by the real AI reply
+    // (hx-swap="outerHTML" on the placeholder itself, still a descendant
+    // of #message-list). Scoped to swaps that actually touch #message-list
+    // so this doesn't yank the scroll position on unrelated swaps — the
+    // live-status poll in Lecture Mode fires every 4s and shouldn't keep
+    // snapping a student back to the bottom if they've scrolled up to
+    // reread something.
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
+        var list = document.getElementById('message-list');
+        var target = evt.detail.target;
+        if (list && target && (target.id === 'message-list' || list.contains(target))) {
+            list.scrollTop = list.scrollHeight;
+        }
+    });
+</script>
 {% endblock %}
