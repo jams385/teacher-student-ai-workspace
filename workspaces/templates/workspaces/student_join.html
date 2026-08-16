@@ -24,13 +24,30 @@
                 <p class="form-error">{{ error }}</p>
             {% endfor %}
             {% for field in form %}
-                <div class="form-field">
-                    <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
-                    {{ field }}
-                    {% if field.help_text %}<p class="form-help">{{ field.help_text }}</p>{% endif %}
-                    {% for error in field.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
-                </div>
+                {% if field.name != 'agree_to_terms' %}
+                    <div class="form-field">
+                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.help_text %}<p class="form-help">{{ field.help_text }}</p>{% endif %}
+                        {% for error in field.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+                    </div>
+                {% endif %}
             {% endfor %}
+            <details class="consent-notice">
+                <summary>Before you join — what we collect and why</summary>
+                <div class="consent-notice__body">
+                    <p>You don't need an email or password to use this. You'll just pick a display name your teacher will see.</p>
+                    <p><strong>What we collect here.</strong> The display name you choose. Nothing else — no email, no real name required, no account is created.</p>
+                    <p><strong>A few things to know.</strong> Your display name is only used inside the class workspace you join — it's not a persistent account, and it's not shared outside your class. You can use a nickname instead of your real name if your teacher allows it — check with them first. Each time you join a workspace, you'll see a short notice specific to that class before you start chatting.</p>
+                </div>
+            </details>
+            <div class="form-field">
+                <label class="form-checkbox">
+                    {{ form.agree_to_terms }}
+                    <span>{{ form.agree_to_terms.label }}</span>
+                </label>
+                {% for error in form.agree_to_terms.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+            </div>
             <button type="submit" class="btn btn-primary">Join Workspace</button>
         </form>
         <p class="auth-hero__footer">Want to come back to this later? <a href="{% url 'student_login' %}">Log in</a> or <a href="{% url 'student_signup' %}">sign up</a></p>

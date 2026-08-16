@@ -33,8 +33,20 @@ class WorkspaceForm(forms.ModelForm):
 
 
 class StudentJoinForm(forms.Form):
+    """Same join-code + display-name flow whether the student is anonymous
+    or logged in (see views.student_join). The consent checkbox is
+    docs/student_profile_notice.md — the one-time, no-account-required
+    notice shown before a student ever enters a join code, distinct from
+    docs/student_workspace_join_notice.md (which would name a specific
+    workspace/mode and isn't wired up anywhere yet). Real form validation,
+    not just page copy, same pattern as TeacherSignupForm/StudentSignupForm."""
+
     join_code = forms.CharField(max_length=16, label='Join code')
     display_name = forms.CharField(max_length=100, label='Your name')
+    agree_to_terms = forms.BooleanField(
+        required=True,
+        label='I understand.',
+    )
 
     def clean_join_code(self):
         code = self.cleaned_data['join_code'].strip().upper()

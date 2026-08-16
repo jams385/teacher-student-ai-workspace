@@ -3,6 +3,9 @@ import random
 import re
 from collections import Counter
 
+import bleach
+import latex2mathml.converter as latex2mathml
+import markdown as markdown_lib
 import pymupdf as fitz  # `import fitz` is a deprecated alias as of pymupdf 1.28
 from pptx import Presentation
 from pypdf import PdfReader
@@ -135,3 +138,137 @@ def has_meaningful_content(text):
     dashboard so a message that's just "thanks" or "the" doesn't inflate a
     student's message count."""
     return next(_meaningful_words(text), None) is not None
+
+
+# --------------------------------------------------------------------------
+# AI reply rendering (Markdown + LaTeX)
+#
+# Gemini's replies (and the Lecture Mode outline generator, same model)
+# routinely come back Markdown-formatted — **bold**, bullet lists, headings
+# — and, especially for math-heavy Homework/Socratic Mode help, with LaTeX
+# math using whichever delimiter convention the model reaches for ($$/$
+# or \[\]/\(\)). Left as plain text (the old `|linebreaksbr` treatment),
+# all of that shows up as raw literal syntax instead of formatted text —
+# this is what render_ai_content fixes. Student-typed messages are
+# deliberately NOT run through this (see _message.html) — a student typing
+# "it costs $5" shouldn't have that treated as math, and there's no reason
+# to markdown-render a student's own plain-text question.
+# --------------------------------------------------------------------------
+
+# $$...$$ or \[...\] — display/block math, always unambiguous (no
+# legitimate non-math text contains a literal "\[").
+_BLOCK_MATH_RE = re.compile(r'\$\$(.+?)\$\$|\\\[(.+?)\\\]', re.DOTALL)
+
+# \(...\) — inline math, also unambiguous.
+_BRACKET_INLINE_MATH_RE = re.compile(r'\\\((.+?)\\\)', re.DOTALL)
+
+# $...$ — inline math, but single dollar signs are ambiguous with currency
+# ("it costs $5 today and $10 tomorrow"), so this is matched more broadly
+# and then filtered by _looks_like_math below before being treated as math.
+_DOLLAR_INLINE_MATH_RE = re.compile(r'(?<!\$)\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\$)')
+
+_LOOKS_LIKE_MATH_RE = re.compile(r'[\\^_{}]|[A-Za-z]')
+_PURE_NUMBER_RE = re.compile(r'^[\d.,]+$')
+
+_MARKDOWN_EXTENSIONS = ['fenced_code', 'sane_lists', 'nl2br']
+
+# MathML elements latex2mathml can emit, plus the plain-text formatting tags
+# Markdown produces from the mode prompts' own encouraged style (headings,
+# bullets, bold/italic, code, tables) — anything else (script, img, iframe,
+# on* handlers, ...) is stripped. This matters because the AI's reply is
+# attacker-adjacent: a student's prior messages can influence what the
+# model outputs, so this can't rely on the model "just not" emitting HTML
+# (the same reasoning as the keyword-flagging/system-prompt architecture
+# elsewhere in this app — see CLAUDE.md).
+_ALLOWED_TAGS = [
+    'p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'code', 'pre', 'blockquote', 'hr',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'div', 'span',
+    'table', 'thead', 'tbody', 'tr', 'td', 'th',
+    'math', 'mrow', 'msup', 'msub', 'msubsup', 'munder', 'mover', 'munderover',
+    'mi', 'mn', 'mo', 'mfrac', 'msqrt', 'mroot', 'mspace', 'mtable', 'mtr', 'mtd',
+    'mtext', 'mstyle', 'semantics', 'annotation',
+]
+_ALLOWED_ATTRS = {
+    'a': ['href'],
+    'div': ['class'],
+    'span': ['class'],
+    'code': ['class'],  # fenced_code's "language-xxx" class
+    'math': ['xmlns', 'display'],
+    'mo': ['stretchy'],
+    'mspace': ['width'],
+}
+
+
+def _looks_like_math(content):
+    """Heuristic gate for single-$-delimited spans, where $ is genuinely
+    ambiguous with currency: skip plain numbers ("$5", "$10.50") and
+    require at least one character that wouldn't show up in a dollar
+    amount (a backslash, ^, _, {}, or a letter — "x", "\\alpha", "a_1")."""
+    stripped = content.strip()
+    if not stripped or _PURE_NUMBER_RE.match(stripped):
+        return False
+    return bool(_LOOKS_LIKE_MATH_RE.search(stripped))
+
+
+def render_ai_content(text: str) -> str:
+    """Render AI-authored text (chat replies, the lecture outline) as safe
+    HTML: Markdown formatting plus LaTeX math (converted to MathML, which
+    every evergreen browser renders natively — no client-side JS/vendored
+    math library needed).
+
+    Math spans are pulled out and replaced with placeholder tokens *before*
+    running the Markdown converter, then substituted back in afterward —
+    otherwise Markdown's own `_..._` (italic) and `*...*` parsing would
+    mangle LaTeX subscripts/multiplication (e.g. "$a_1$", "$\\alpha * \\beta$")
+    before latex2mathml ever sees them.
+
+    Returns HTML already passed through bleach.clean() with an explicit
+    tag/attribute allowlist — safe to mark as Django `safe` at the call
+    site (see templatetags/chat_extras.py), but not a substitute for never
+    trusting the *system* prompt (see ai_client.py) — this only protects
+    against what the model's *reply* renders as, not what it's told to do.
+    """
+    placeholders = {}
+    counter = 0
+
+    def stash(latex, display):
+        nonlocal counter
+        counter += 1
+        token = f'MATHPLACEHOLDERTOKEN{counter}ENDTOKEN'
+        try:
+            mathml = latex2mathml.convert(latex.strip(), display=display)
+        except Exception:
+            # Malformed LaTeX from the model — show the raw source rather
+            # than losing the message or crashing the page.
+            mathml = bleach.clean(latex.strip())
+        tag = 'div' if display == 'block' else 'span'
+        css_class = 'ai-math ai-math--block' if display == 'block' else 'ai-math ai-math--inline'
+        placeholders[token] = f'<{tag} class="{css_class}">{mathml}</{tag}>'
+        return token
+
+    def block_sub(match):
+        latex = match.group(1) if match.group(1) is not None else match.group(2)
+        # Blank lines around the token so Markdown treats it as its own
+        # block rather than folding it into a surrounding paragraph.
+        return f'\n\n{stash(latex, "block")}\n\n'
+
+    def bracket_inline_sub(match):
+        return stash(match.group(1), 'inline')
+
+    def dollar_inline_sub(match):
+        content = match.group(1)
+        if not _looks_like_math(content):
+            return match.group(0)  # not math-shaped — leave the literal $..$ text alone
+        return stash(content, 'inline')
+
+    text = _BLOCK_MATH_RE.sub(block_sub, text)
+    text = _BRACKET_INLINE_MATH_RE.sub(bracket_inline_sub, text)
+    text = _DOLLAR_INLINE_MATH_RE.sub(dollar_inline_sub, text)
+
+    html = markdown_lib.markdown(text, extensions=_MARKDOWN_EXTENSIONS)
+    html = html.replace('<p></p>', '')  # cosmetic: blank paragraphs left around block-math tokens
+
+    for token, replacement in placeholders.items():
+        html = html.replace(token, replacement)
+
+    return bleach.clean(html, tags=_ALLOWED_TAGS, attributes=_ALLOWED_ATTRS, strip=True)

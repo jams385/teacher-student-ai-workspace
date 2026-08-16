@@ -11,3 +11,6 @@ python-pptx
 supabase
 gunicorn
 whitenoise
+markdown
+latex2mathml
+bleach

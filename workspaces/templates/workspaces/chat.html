@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load chat_extras %}
 
 {% block title %}{{ workspace.name }}{% endblock %}
 
@@ -62,7 +63,7 @@
 
         <div class="lecture-panel__pane" data-pane="summary" hidden>
             {% if workspace.lecture_outline %}
-                <div class="lecture-panel__summary">{{ workspace.lecture_outline|linebreaksbr }}</div>
+                <div class="lecture-panel__summary">{{ workspace.lecture_outline|render_ai_content }}</div>
             {% else %}
                 <p class="lecture-panel__empty"><em>Your teacher hasn't generated a lecture outline yet.</em></p>
             {% endif %}

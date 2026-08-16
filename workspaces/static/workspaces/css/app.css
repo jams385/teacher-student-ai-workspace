@@ -1861,6 +1861,89 @@ button, input, select, textarea {
 }
 
 /* --------------------------------------------------------------------------
+   Rendered AI content (Markdown + LaTeX math, see utils.render_ai_content)
+   Shared by .chat-message-content (AI chat replies) and .lecture-panel__summary
+   (the lecture outline) — both are fed through the same renderer, so one
+   set of typographic rules covers both. Deliberately not applied to a
+   student's own .chat-message-content — those stay plain linebreaksbr text,
+   see _message.html — so no scoping issue with student-authored markup.
+   -------------------------------------------------------------------------- */
+.chat-message-content :is(h1, h2, h3, h4, h5, h6),
+.lecture-panel__summary :is(h1, h2, h3, h4, h5, h6) {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--font-size-md);
+}
+
+.chat-message-content :is(h1, h2, h3, h4, h5, h6):first-child,
+.lecture-panel__summary :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
+}
+
+.chat-message-content p,
+.lecture-panel__summary p {
+  margin: 0 0 var(--space-3);
+}
+
+.chat-message-content p:last-child,
+.lecture-panel__summary p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-message-content :is(ul, ol),
+.lecture-panel__summary :is(ul, ol) {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-5);
+}
+
+.chat-message-content li,
+.lecture-panel__summary li {
+  margin-bottom: var(--space-1);
+}
+
+.chat-message-content code,
+.lecture-panel__summary code {
+  background: color-mix(in srgb, var(--color-black) 6%, transparent);
+  border-radius: var(--radius-md);
+  padding: .1em .35em;
+  font-size: .9em;
+}
+
+.chat-message-content pre,
+.lecture-panel__summary pre {
+  overflow-x: auto;
+  background: color-mix(in srgb, var(--color-black) 6%, transparent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+
+.chat-message-content pre code,
+.lecture-panel__summary pre code {
+  background: none;
+  padding: 0;
+}
+
+.chat-message-content blockquote,
+.lecture-panel__summary blockquote {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-gray-200);
+  color: var(--color-accent-dark);
+}
+
+/* MathML needs no library to render (evergreen Chrome/Firefox/Safari all
+   support MathML Core natively) — only sizing/spacing here. */
+.ai-math--block {
+  display: block;
+  margin: var(--space-2) 0;
+  overflow-x: auto;
+}
+
+.ai-math--block math {
+  font-size: 1.15em;
+}
+
+/* --------------------------------------------------------------------------
    Layout shell
    -------------------------------------------------------------------------- */
 .site-header {

@@ -12,7 +12,7 @@ from django.urls import reverse
 from . import ai_client, moderation, storage
 from .forms import MaterialUploadForm
 from .models import Flag, Material, Message, Profile, Slide, StudentSession, Workspace
-from .utils import extract_pptx_text, rasterize_pdf
+from .utils import extract_pptx_text, rasterize_pdf, render_ai_content
 
 
 def _create_teacher(username, password='pw'):
@@ -392,10 +392,62 @@ class StudentSignupTests(TestCase):
             teacher=teacher, name='Test Class', mode=Workspace.Mode.HOMEWORK, join_code='ABCDEF',
         )
         self.client.post(reverse('student_signup'), self._valid_data())
-        self.client.post(reverse('student_join'), {'join_code': 'ABCDEF', 'display_name': 'Jamie'})
+        self.client.post(reverse('student_join'), {'join_code': 'ABCDEF', 'display_name': 'Jamie', 'agree_to_terms': 'on'})
 
         response = self.client.get(reverse('student_home'))
         self.assertContains(response, 'Test Class')
+
+
+class StudentJoinConsentTests(TestCase):
+    """The join form's consent checkbox (docs/student_profile_notice.md) —
+    real form validation, not just page copy, same pattern as
+    TeacherSignupForm/StudentSignupForm. Covers both the anonymous
+    (session-only) and logged-in-student (account-linked) join paths, since
+    student_join branches on request.user.is_authenticated."""
+
+    def setUp(self):
+        self.teacher = _create_teacher('teacher')
+        self.workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Test Class', mode=Workspace.Mode.HOMEWORK, join_code='ABCDEF',
+        )
+
+    def _valid_data(self, **overrides):
+        data = {'join_code': 'ABCDEF', 'display_name': 'Jamie', 'agree_to_terms': 'on'}
+        data.update(overrides)
+        return data
+
+    def test_join_form_shows_consent_notice_and_checkbox(self):
+        response = self.client.get(reverse('student_join'))
+        self.assertContains(response, 'consent-notice')
+        self.assertContains(response, 'I understand.')
+
+    def test_anonymous_join_without_agreeing_is_rejected(self):
+        data = self._valid_data()
+        del data['agree_to_terms']
+        response = self.client.post(reverse('student_join'), data)
+        self.assertEqual(response.status_code, 200)  # re-renders the form, no redirect
+        self.assertFalse(StudentSession.objects.filter(workspace=self.workspace).exists())
+
+    def test_anonymous_join_with_agreement_succeeds(self):
+        response = self.client.post(reverse('student_join'), self._valid_data())
+        self.assertRedirects(response, reverse('student_chat'))
+        self.assertTrue(StudentSession.objects.filter(workspace=self.workspace, display_name='Jamie').exists())
+
+    def test_logged_in_student_join_without_agreeing_is_rejected(self):
+        _create_student('student')
+        self.client.login(username='student', password='pw')
+        data = self._valid_data()
+        del data['agree_to_terms']
+        response = self.client.post(reverse('student_join'), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(StudentSession.objects.filter(workspace=self.workspace).exists())
+
+    def test_logged_in_student_join_with_agreement_succeeds(self):
+        student = _create_student('student')
+        self.client.login(username='student', password='pw')
+        response = self.client.post(reverse('student_join'), self._valid_data())
+        self.assertRedirects(response, reverse('student_chat'))
+        self.assertTrue(StudentSession.objects.filter(workspace=self.workspace, student=student).exists())
 
 
 class StudentChangePasswordTests(TestCase):
@@ -609,6 +661,112 @@ class ExtractPptxTextTests(TestCase):
 
         self.assertIn('Visible slide text', text)
         self.assertNotIn('Private teacher notes', text)
+
+
+class RenderAiContentTests(TestCase):
+    """utils.render_ai_content — Markdown + LaTeX rendering for AI-authored
+    text (chat replies, the lecture outline). See _message.html: this is
+    deliberately never applied to a student's own typed message."""
+
+    def test_renders_basic_markdown(self):
+        # A blank line before the list matches standard Markdown (and how
+        # LLMs consistently format bulleted output) — a list glued directly
+        # to the preceding line with no blank line is a separate, known
+        # nl2br quirk (see test_list_without_blank_line_still_readable).
+        html = render_ai_content('**bold** and *italic* and a list:\n\n- one\n- two')
+        self.assertIn('<strong>bold</strong>', html)
+        self.assertIn('<em>italic</em>', html)
+        self.assertIn('<li>one</li>', html)
+
+    def test_list_without_blank_line_still_readable(self):
+        # nl2br (needed so single newlines in an AI reply still break
+        # visually) means a list not preceded by a blank line won't be
+        # recognized as a <ul> — degrades to plain text with <br> breaks
+        # rather than a bulleted list, which is a readable fallback, not
+        # broken output.
+        html = render_ai_content('a list:\n- one\n- two')
+        self.assertIn('one', html)
+        self.assertIn('two', html)
+
+    def test_renders_block_math_as_mathml(self):
+        html = render_ai_content('The formula is $$x = \\frac{-b}{2a}$$ here.')
+        self.assertIn('<math', html)
+        self.assertIn('display="block"', html)
+        self.assertIn('<mfrac>', html)
+        self.assertNotIn('$$', html)
+
+    def test_renders_inline_dollar_math(self):
+        html = render_ai_content('If $x^2 = 9$ then x is 3 or -3.')
+        self.assertIn('<math', html)
+        self.assertIn('display="inline"', html)
+        self.assertNotIn('$x^2', html)
+
+    def test_renders_backslash_bracket_math(self):
+        html = render_ai_content('Use \\(a^2+b^2=c^2\\) for right triangles.')
+        self.assertIn('<math', html)
+        self.assertNotIn('\\(', html)
+
+    def test_does_not_convert_currency_dollar_signs(self):
+        html = render_ai_content('It costs $5 today and $10 tomorrow.')
+        self.assertNotIn('<math', html)
+        self.assertIn('$5', html)
+        self.assertIn('$10', html)
+
+    def test_subscript_underscore_not_mangled_by_markdown(self):
+        # A bare underscore in $a_1$ would normally trigger Markdown's
+        # italic parsing if math weren't protected before the Markdown pass.
+        html = render_ai_content('Given $a_1 + a_2 = a_3$, solve for a_3.')
+        self.assertIn('<msub>', html)
+        self.assertNotIn('<em>', html)
+
+    def test_strips_script_tags(self):
+        html = render_ai_content('<script>alert(1)</script>ignore that')
+        self.assertNotIn('<script', html)
+        self.assertIn('ignore that', html)
+
+    def test_strips_event_handler_attributes(self):
+        html = render_ai_content('<img src=x onerror=alert(1)>')
+        self.assertNotIn('onerror', html)
+        self.assertNotIn('<img', html)
+
+    def test_malformed_latex_does_not_crash(self):
+        # Falls back to showing the raw (escaped) source instead of losing
+        # the message or raising.
+        html = render_ai_content('Broken math: $$\\frac{1}{$$ end.')
+        self.assertIsInstance(html, str)
+
+
+class MessageRenderingIntegrationTests(TestCase):
+    """Confirms the render_ai_content filter is actually wired into
+    _message.html for AI messages and NOT applied to student messages
+    (see the {% if message.role == 'ai' %} branch there)."""
+
+    def setUp(self):
+        self.teacher = _create_teacher('teacher')
+        self.workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Test Class', mode=Workspace.Mode.SOCRATIC, join_code='ABCDEF',
+        )
+        self.student_session = StudentSession.objects.create(
+            workspace=self.workspace, display_name='Alex', session_id='sess-1',
+        )
+        self.client.login(username='teacher', password='pw')
+
+    def test_ai_message_markdown_is_rendered(self):
+        Message.objects.create(
+            workspace=self.workspace, student_session=self.student_session,
+            role=Message.Role.AI, content='**bold point**',
+        )
+        response = self.client.get(reverse('session_transcript', args=[self.workspace.pk, self.student_session.pk]))
+        self.assertContains(response, '<strong>bold point</strong>', html=True)
+
+    def test_student_message_markdown_is_left_literal(self):
+        Message.objects.create(
+            workspace=self.workspace, student_session=self.student_session,
+            role=Message.Role.STUDENT, content='**not bold**',
+        )
+        response = self.client.get(reverse('session_transcript', args=[self.workspace.pk, self.student_session.pk]))
+        self.assertNotContains(response, '<strong>not bold</strong>', html=True)
+        self.assertContains(response, '**not bold**')
 
 
 class MaterialUploadFormPptxTests(TestCase):
