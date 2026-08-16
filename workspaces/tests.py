@@ -2,6 +2,7 @@ import io
 from unittest.mock import MagicMock, patch
 
 import pymupdf as fitz  # `import fitz` is a deprecated alias as of pymupdf 1.28
+from google.genai import errors as genai_errors
 from pptx import Presentation
 
 from django.contrib.auth import get_user_model
@@ -31,6 +32,16 @@ def _create_student(username, password='pw'):
     user = get_user_model().objects.create_user(username=username, password=password)
     Profile.objects.create(user=user, role=Profile.Role.STUDENT)
     return user
+
+
+def _quota_api_error():
+    """A genai.errors.APIError shaped like Gemini's real 429/RESOURCE_EXHAUSTED
+    rejection — used as a mock side_effect wherever a test needs to exercise
+    the AIQuotaExceededError path (see ai_client._is_quota_error)."""
+    return genai_errors.APIError(
+        code=429,
+        response_json={'status': 'RESOURCE_EXHAUSTED', 'message': 'Quota exceeded for quota metric.'},
+    )
 
 
 def _make_pptx_bytes(slide_texts):
@@ -201,6 +212,25 @@ class MessageSendAndReplyFlowTests(TestCase):
         response = self.client.get(reverse('get_ai_reply', args=[student_message.pk]))
 
         self.assertContains(response, 'Something went wrong')
+        self.assertEqual(Message.objects.filter(role=Message.Role.AI).count(), 0)
+
+    @patch('workspaces.views.ai_client.get_ai_response', side_effect=ai_client.AIQuotaExceededError('quota'))
+    def test_get_ai_reply_shows_quota_partial_on_quota_error(self, mock_ai):
+        """A distinct partial from the generic failure above — see
+        workspaces/partials/_chat_quota_error.html — since running out of
+        Gemini's free-tier quota is an expected prototype limitation, not
+        an unexplained failure."""
+        self._join_as_student()
+        student_message = Message.objects.create(
+            workspace=self.workspace, student_session=self.student_session,
+            role=Message.Role.STUDENT, content='Can you help me with fractions?',
+        )
+        response = self.client.get(reverse('get_ai_reply', args=[student_message.pk]))
+
+        self.assertTemplateUsed(response, 'workspaces/partials/_chat_quota_error.html')
+        self.assertNotContains(response, 'Something went wrong')
+        self.assertContains(response, 'prototype')
+        self.assertContains(response, "free tier")
         self.assertEqual(Message.objects.filter(role=Message.Role.AI).count(), 0)
 
     @patch('workspaces.views.ai_client.get_ai_response', return_value='reply')
@@ -756,6 +786,56 @@ class SummarizeLectureMaterialTests(TestCase):
         with self.assertRaises(ai_client.AIClientError):
             ai_client.summarize_lecture_material('some lecture content')
 
+    @patch('workspaces.ai_client._get_client')
+    def test_quota_error_raises_ai_quota_exceeded_error(self, mock_get_client):
+        mock_get_client.return_value.models.generate_content.side_effect = _quota_api_error()
+
+        with self.assertRaises(ai_client.AIQuotaExceededError):
+            ai_client.summarize_lecture_material('some lecture content')
+
+
+class QuotaErrorDetectionTests(TestCase):
+    """ai_client._is_quota_error and the two call sites that use it to raise
+    AIQuotaExceededError instead of the generic AIClientError — this app
+    runs on Gemini's free tier (see ai_client.py's module docstring), so
+    hitting a 429/RESOURCE_EXHAUSTED quota is an expected failure mode
+    worth a distinct, honest message rather than "something went wrong".
+    See [[GenerateLectureOutlineTests]] and [[MessageSendAndReplyFlowTests]]
+    for the view-level behavior this feeds."""
+
+    def test_http_429_is_a_quota_error(self):
+        error = genai_errors.APIError(code=429, response_json={'status': 'FAILED_PRECONDITION', 'message': 'x'})
+        self.assertTrue(ai_client._is_quota_error(error))
+
+    def test_resource_exhausted_status_is_a_quota_error(self):
+        # Status checked independently of code, in case the SDK ever reports
+        # RESOURCE_EXHAUSTED under a different HTTP code.
+        error = genai_errors.APIError(code=400, response_json={'status': 'RESOURCE_EXHAUSTED', 'message': 'x'})
+        self.assertTrue(ai_client._is_quota_error(error))
+
+    def test_unrelated_api_error_is_not_a_quota_error(self):
+        error = genai_errors.APIError(code=400, response_json={'status': 'INVALID_ARGUMENT', 'message': 'bad request'})
+        self.assertFalse(ai_client._is_quota_error(error))
+
+    @patch('workspaces.ai_client._get_client')
+    def test_get_ai_response_quota_error_raises_ai_quota_exceeded_error(self, mock_get_client):
+        mock_get_client.return_value.models.generate_content.side_effect = _quota_api_error()
+
+        with self.assertRaises(ai_client.AIQuotaExceededError):
+            ai_client.get_ai_response(Workspace.Mode.SOCRATIC, [], 'hello')
+
+    @patch('workspaces.ai_client._get_client')
+    def test_non_quota_api_error_raises_plain_ai_client_error(self, mock_get_client):
+        mock_get_client.return_value.models.generate_content.side_effect = genai_errors.APIError(
+            code=400, response_json={'status': 'INVALID_ARGUMENT', 'message': 'bad request'},
+        )
+
+        with self.assertRaises(ai_client.AIClientError) as ctx:
+            ai_client.get_ai_response(Workspace.Mode.SOCRATIC, [], 'hello')
+        # Specifically not the quota subclass — a caller that only handles
+        # the quota case first must fall through to the generic branch.
+        self.assertNotIsInstance(ctx.exception, ai_client.AIQuotaExceededError)
+
 
 class ExtractPptxTextTests(TestCase):
     def test_extracts_text_from_each_slide(self):
@@ -924,6 +1004,16 @@ class GenerateLectureOutlineTests(TestCase):
         self.client.post(reverse('generate_lecture_outline', args=[self.workspace.pk]))
         self.workspace.refresh_from_db()
         self.assertEqual(self.workspace.lecture_outline, '')
+
+    @patch('workspaces.views.ai_client.summarize_lecture_material', side_effect=ai_client.AIQuotaExceededError('quota'))
+    def test_quota_error_shows_distinct_message(self, mock_summarize):
+        response = self.client.post(
+            reverse('generate_lecture_outline', args=[self.workspace.pk]), follow=True,
+        )
+        self.workspace.refresh_from_db()
+        self.assertEqual(self.workspace.lecture_outline, '')
+        messages_text = [str(m) for m in response.context['messages']]
+        self.assertTrue(any('prototype' in m and 'free tier' in m for m in messages_text), messages_text)
 
     def test_no_materials_short_circuits_without_calling_ai(self):
         self.workspace.materials.all().delete()

@@ -374,6 +374,16 @@ def generate_lecture_outline(request, pk):
 
     try:
         outline = ai_client.summarize_lecture_material(material_text)
+    except ai_client.AIQuotaExceededError:
+        # Checked before the generic AIClientError below, since it's a
+        # subclass — same reasoning as get_ai_reply's chat-side handling.
+        messages.error(
+            request,
+            "Couldn't generate the outline: the AI has hit its usage limit. This is a prototype "
+            "running on Google Gemini's free tier, which caps how many requests can be made — "
+            "please try again later.",
+        )
+        return redirect(redirect_target, pk=workspace.pk)
     except ai_client.AIClientError as e:
         messages.error(request, f"Couldn't generate the outline: {e}")
         return redirect(redirect_target, pk=workspace.pk)
@@ -932,6 +942,11 @@ def get_ai_reply(request, message_pk):
         reply_text = ai_client.get_ai_response(
             workspace.mode, conversation_history, student_message.content, course_material_context
         )
+    except ai_client.AIQuotaExceededError:
+        # Checked before the generic AIClientError below, since it's a
+        # subclass — an expected failure mode for a free-tier prototype,
+        # not "something's broken", so it gets its own honest message.
+        return render(request, 'workspaces/partials/_chat_quota_error.html')
     except ai_client.AIClientError:
         return render(request, 'workspaces/partials/_chat_error.html')
 

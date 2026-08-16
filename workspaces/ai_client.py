@@ -93,6 +93,31 @@ class AIClientError(Exception):
     """Raised when the AI provider request fails, wrapping the underlying error."""
 
 
+class AIQuotaExceededError(AIClientError):
+    """Raised specifically when the provider rejected the request for hitting
+    a rate/usage quota (HTTP 429, status RESOURCE_EXHAUSTED).
+
+    This app runs on Google AI Studio's free tier (see this module's docstring
+    and CLAUDE.md's tech stack notes), which caps requests per minute/day —
+    unlike a generic AIClientError, this is an entirely expected failure mode
+    for a prototype, not "something's broken". Kept as a subclass of
+    AIClientError (not a sibling) so any caller that only knows to catch the
+    generic error still catches this too; callers that want to show a
+    distinct, honest "we're out of free-tier quota" message catch this one
+    first — see get_ai_reply and generate_lecture_outline in views.py, and
+    workspaces/partials/_chat_quota_error.html.
+    """
+
+
+def _is_quota_error(error: genai.errors.APIError) -> bool:
+    """True for Gemini's rate/usage-limit rejection; false for every other
+    APIError (auth failure, bad request, provider-side 5xx, etc.), which
+    should still surface as the generic AIClientError."""
+    if error.code == 429:
+        return True
+    return (error.status or '').upper() == 'RESOURCE_EXHAUSTED'
+
+
 def get_ai_response(mode: str, conversation_history: list, student_message: str, course_material_context: str = "") -> str:
     """Get the AI's reply to a student's message.
 
@@ -118,6 +143,8 @@ def get_ai_response(mode: str, conversation_history: list, student_message: str,
     Raises:
         ValueError: if `mode` isn't a known mode.
         AIClientError: if the underlying API request fails.
+        AIQuotaExceededError: (a subclass of AIClientError) specifically when
+            the request failed for hitting the free-tier rate/usage quota.
     """
     if mode not in MODE_PROMPTS:
         raise ValueError(f"Unknown mode: {mode!r}. Must be one of {list(MODE_PROMPTS)}.")
@@ -138,6 +165,8 @@ def get_ai_response(mode: str, conversation_history: list, student_message: str,
             ),
         )
     except genai.errors.APIError as e:
+        if _is_quota_error(e):
+            raise AIQuotaExceededError(f"AI provider quota exceeded: {e}") from e
         raise AIClientError(f"AI provider request failed: {e}") from e
 
     if response.text:
@@ -173,6 +202,8 @@ def summarize_lecture_material(material_text: str) -> str:
     Raises:
         ValueError: if material_text is empty.
         AIClientError: if the underlying API request fails or returns nothing.
+        AIQuotaExceededError: (a subclass of AIClientError) specifically when
+            the request failed for hitting the free-tier rate/usage quota.
     """
     if not material_text.strip():
         raise ValueError("material_text must not be empty.")
@@ -187,6 +218,8 @@ def summarize_lecture_material(material_text: str) -> str:
             ),
         )
     except genai.errors.APIError as e:
+        if _is_quota_error(e):
+            raise AIQuotaExceededError(f"AI provider quota exceeded: {e}") from e
         raise AIClientError(f"AI provider request failed: {e}") from e
 
     if response.text:

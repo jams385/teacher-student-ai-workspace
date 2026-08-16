@@ -1657,6 +1657,15 @@ button, input, select, textarea {
   text-align: center;
 }
 
+/* Only exercised by _chat_quota_error.html (the plain "something went
+   wrong" partial is a single bare <em>, no heading/paragraph) — zeroes the
+   browser's default <p> top margin so the explanation sits close under the
+   bold headline instead of picking up an extra blank line, same reasoning
+   as .tour-dialog p's explicit margin reset. */
+.chat-message-error p {
+  margin: var(--space-2) 0 0;
+}
+
 .chat-message-author {
   font-weight: var(--font-weight-bold);
   margin-bottom: var(--space-1);
