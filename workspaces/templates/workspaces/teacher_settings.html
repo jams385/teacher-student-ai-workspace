@@ -18,6 +18,17 @@
     <a href="{% url 'teacher_change_password' %}" class="btn btn-secondary">Change password</a>
 </div>
 
+<div class="settings-section">
+    <div class="settings-section__text">
+        <h2>Replay the tutorial</h2>
+        <p>Walk through creating a workspace, choosing a mode, and reading the dashboard again.</p>
+    </div>
+    <form method="post" action="{% url 'onboarding_restart' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary">Replay tutorial</button>
+    </form>
+</div>
+
 <div class="settings-section settings-section--danger">
     <div class="settings-section__text">
         <h2>Delete account</h2>

@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from . import ai_client, moderation, storage
+from . import ai_client, moderation, onboarding, storage
 from .decorators import student_required, teacher_required
 from .forms import (
     AccountDeletionConfirmForm, MaterialUploadForm, StudentJoinForm, StudentSignupForm, TeacherSignupForm,
@@ -81,6 +81,88 @@ def workspace_create(request):
 @teacher_required
 def teacher_settings(request):
     return render(request, 'workspaces/teacher_settings.html')
+
+
+# --- Teacher onboarding tour -------------------------------------------------
+# Three tiny state transitions on Profile, all POSTed by the tour's own script
+# (workspaces/partials/_onboarding_tour.html). Moving between coach marks
+# *within* a page is purely client-side — only page-level progress is worth a
+# round trip, so a teacher clicking Next doesn't wait on the network.
+#
+# All three answer 204 No Content: the client already knows what it needs to
+# render next (the step data and seen-pages list are embedded in the page), so
+# a response body would just be ignored.
+
+@teacher_required
+@require_POST
+def onboarding_start(request):
+    """Teacher accepted the welcome dialog — begin showing coach marks."""
+    profile = request.user.profile
+    profile.onboarding_status = Profile.OnboardingStatus.ACTIVE
+    profile.save(update_fields=['onboarding_status'])
+    return HttpResponse(status=204)
+
+
+@teacher_required
+@require_POST
+def onboarding_page_done(request):
+    """Teacher worked through (or dismissed) one page's coach marks.
+
+    Records the page so its marks never show again, and finishes the whole
+    tour once every page in onboarding.TOUR_PAGE_ORDER has been covered.
+    """
+    page = request.POST.get('page', '')
+    if page not in onboarding.TOUR_STEPS:
+        # Not a tour page — nothing to record. 400 rather than silently
+        # writing an arbitrary client-supplied string into the JSON column.
+        return HttpResponse(status=400)
+
+    profile = request.user.profile
+    seen = list(profile.onboarding_seen_pages or [])
+    if page not in seen:
+        seen.append(page)
+    profile.onboarding_seen_pages = seen
+
+    update_fields = ['onboarding_seen_pages']
+    if onboarding.is_complete(seen):
+        profile.onboarding_status = Profile.OnboardingStatus.DONE
+        update_fields.append('onboarding_status')
+    elif profile.onboarding_status == Profile.OnboardingStatus.PENDING:
+        # Defensive: reaching a page's last step without ever having hit
+        # onboarding_start (e.g. the welcome POST failed offline) still means
+        # the tour is underway.
+        profile.onboarding_status = Profile.OnboardingStatus.ACTIVE
+        update_fields.append('onboarding_status')
+
+    profile.save(update_fields=update_fields)
+    return HttpResponse(status=204)
+
+
+@teacher_required
+@require_POST
+def onboarding_skip(request):
+    """Teacher dismissed the tour. Restartable from Account settings."""
+    profile = request.user.profile
+    profile.onboarding_status = Profile.OnboardingStatus.DONE
+    profile.save(update_fields=['onboarding_status'])
+    return HttpResponse(status=204)
+
+
+@teacher_required
+@require_POST
+def onboarding_restart(request):
+    """Replay the tour from scratch (Account settings).
+
+    Clears seen_pages as well as the status — otherwise a "restarted" tour
+    would immediately re-complete itself on the first page load, since every
+    page would still be marked as seen.
+    """
+    profile = request.user.profile
+    profile.onboarding_status = Profile.OnboardingStatus.PENDING
+    profile.onboarding_seen_pages = []
+    profile.save(update_fields=['onboarding_status', 'onboarding_seen_pages'])
+    messages.success(request, 'Tutorial restarted — it will pick up on your workspaces page.')
+    return redirect('workspace_list')
 
 
 @teacher_required

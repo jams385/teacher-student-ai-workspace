@@ -39,5 +39,15 @@
     <main class="site-main">
         {% block content %}{% endblock %}
     </main>
+
+    {% comment %}
+    Rendered only when workspaces.context_processors.onboarding_tour returns
+    something — i.e. a teacher, mid-tour, on a page that defines steps. Lives
+    here rather than in the four toured templates so the markup and its script
+    exist once.
+    {% endcomment %}
+    {% if onboarding_tour %}
+        {% include 'workspaces/partials/_onboarding_tour.html' %}
+    {% endif %}
 </body>
 </html>

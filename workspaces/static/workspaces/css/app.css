@@ -2242,6 +2242,172 @@ button, input, select, textarea {
   color: var(--color-debug-text);
 }
 
+/* --------------------------------------------------------------------------
+   Teacher onboarding tour
+   Not from Figma or a mockup — built from the existing token/component
+   vocabulary (see workspaces/partials/_onboarding_tour.html). Two surfaces:
+   the anchored coach mark (.tour__popup + .tour__spotlight) and the native
+   <dialog> prompts (.tour-dialog) for welcome / finish / skip-confirm.
+   -------------------------------------------------------------------------- */
+.tour {
+  position: fixed;
+  inset: 0;
+  /* Above every page surface, including .site-header. The container itself
+     never intercepts clicks — see .tour__spotlight below; only .tour__popup
+     re-enables pointer events for its own buttons. */
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* The dimming and the "hole" are one element: a huge spread box-shadow
+   darkens the entire viewport *except* this element's own rectangle, which
+   is sized to the current anchor. No separate backdrop, no clip-path.
+
+   pointer-events stays none across the whole tour layer, so the highlighted
+   control remains genuinely clickable — several steps ask the teacher to
+   click real UI ("+ New workspace", "View dashboard"), and a click-blocking
+   backdrop would make the tour dead-end there. */
+.tour__spotlight {
+  position: fixed;
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.55),
+    0 0 0 2px var(--color-primary-light-border);
+  pointer-events: none;
+  transition: top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease;
+}
+
+.tour__popup {
+  position: fixed;
+  width: min(340px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--color-white);
+  border: 1px solid var(--color-primary-light-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+
+/* Both of these carry an explicit `display`, which outranks the UA
+   stylesheet's `[hidden] { display: none }` — without these overrides the
+   JS `element.hidden = true` calls in the tour script silently do nothing.
+   Same gotcha documented for .btn[hidden] and .lecture-panel__pane[hidden]. */
+.tour__spotlight[hidden],
+.tour__popup[hidden] {
+  display: none;
+}
+
+.tour__popup:focus {
+  outline: none;
+}
+
+.tour__progress {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-label-accent);
+}
+
+.tour__title {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+}
+
+.tour__body {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  color: var(--color-accent-dark);
+}
+
+.tour__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.tour__nav {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Lowest-emphasis action in the popup — a plain text button, deliberately
+   not a .btn, so "Skip tutorial" never competes with Next/Finish. */
+.tour__skip {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-dark);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.tour__skip:hover {
+  color: var(--color-black);
+}
+
+/* Native <dialog>: deliberately no `display` here. A dialog is display:none
+   until opened and display:block after, so setting display on the class
+   itself would force a closed dialog visible — the same specificity trap as
+   the [hidden] overrides above, one element type over.
+
+   pointer-events must be re-enabled explicitly (as .tour__popup does): these
+   dialogs are descendants of .tour, pointer-events is an inherited property,
+   and showModal() promoting the dialog to the top layer does *not* reset it —
+   so every button inside them is silently unclickable without this. */
+.tour-dialog {
+  pointer-events: auto;
+  width: min(440px, calc(100vw - 32px));
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-card);
+  padding: var(--space-6);
+  background: var(--color-white);
+  color: var(--color-black);
+  font-family: var(--font-family-base);
+}
+
+.tour-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.tour-dialog h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.tour-dialog p {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  color: var(--color-accent-dark);
+}
+
+.tour-dialog__hint {
+  font-size: var(--font-size-sm);
+}
+
+.tour-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour__spotlight {
+    transition: none;
+  }
+}
+
 @media (max-width: 640px) {
   .site-header,
   .site-main,
@@ -2341,5 +2507,13 @@ button, input, select, textarea {
 
   .chat-window--scroll-lg {
     max-height: 400px;
+  }
+
+  /* The tour dialogs' two buttons sit comfortably side by side at 440px, but
+     not once the dialog is clamped to a ~360px phone viewport with padding —
+     stack them and let each span the full width instead of squeezing. */
+  .tour-dialog__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
   }
 }

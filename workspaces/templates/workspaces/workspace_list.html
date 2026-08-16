@@ -8,12 +8,12 @@
     <img class="workspace-page__blob workspace-page__blob--top" src="{% static 'workspaces/vendor/hero/hero-blob-small.svg' %}" alt="" aria-hidden="true">
     <img class="workspace-page__blob workspace-page__blob--bottom" src="{% static 'workspaces/vendor/hero/hero-blob-large.svg' %}" alt="" aria-hidden="true">
 
-    <div class="page-header">
+    <div class="page-header" data-tour="workspace-list-intro">
         <div>
             <h1>Your workspaces</h1>
             <p class="page-header__subtext">Create a workspace for each class, then share its join code with students.</p>
         </div>
-        <a href="{% url 'workspace_create' %}" class="btn btn-primary">+ New workspace</a>
+        <a href="{% url 'workspace_create' %}" class="btn btn-primary" data-tour="new-workspace">+ New workspace</a>
     </div>
 
     {% if workspaces %}

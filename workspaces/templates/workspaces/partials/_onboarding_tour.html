@@ -1,0 +1,309 @@
+{% comment %}
+Teacher onboarding tour — rendered once from base.html for any teacher whose
+tour is still pending/active on a page that defines steps. Everything it needs
+(this page's steps, the pages already seen, whether this is the final page) is
+supplied by workspaces.context_processors.onboarding_tour.
+
+Deliberately not HTMX, unlike most interactivity in this app: a coach mark is
+positioned against a live element's bounding box and moves with scroll/resize,
+which is client-side geometry rather than a server-rendered fragment. Only the
+three page-level state changes hit the server, via fetch() — see views.py.
+
+The two <dialog>s are real native modals (Esc to close, backdrop, focus
+handling for free) rather than window.confirm(), so the welcome/finish/skip
+prompts can carry actual formatting and match the app's design tokens.
+{% endcomment %}
+{{ onboarding_tour.steps|json_script:"onboarding-tour-steps" }}
+
+<div id="onboarding-tour"
+     class="tour"
+     data-page="{{ onboarding_tour.page }}"
+     data-status="{{ onboarding_tour.status }}"
+     data-seen="{% if onboarding_tour.page in onboarding_tour.seen_pages %}1{% else %}0{% endif %}"
+     data-final-page="{% if onboarding_tour.is_final_page %}1{% else %}0{% endif %}"
+     data-start-url="{% url 'onboarding_start' %}"
+     data-page-done-url="{% url 'onboarding_page_done' %}"
+     data-skip-url="{% url 'onboarding_skip' %}">
+
+    {% comment %}
+    A form purely as a CSRF token carrier — the script reads the token out of
+    it for its fetch() calls. Cheaper and less brittle than parsing the cookie.
+    {% endcomment %}
+    <form id="onboarding-tour-csrf" hidden>{% csrf_token %}</form>
+
+    {# Dims the whole page except the anchor's rectangle, via one huge spread   #}
+    {# box-shadow. pointer-events: none throughout, so the highlighted control  #}
+    {# (e.g. "+ New workspace") stays genuinely clickable — the tour asks the   #}
+    {# teacher to click real UI, so it must never intercept those clicks.       #}
+    <div class="tour__spotlight" id="tour-spotlight" hidden></div>
+
+    <div class="tour__popup" id="tour-popup" role="dialog" aria-labelledby="tour-popup-title" aria-live="polite" tabindex="-1" hidden>
+        <p class="tour__progress" id="tour-popup-progress"></p>
+        <h2 class="tour__title" id="tour-popup-title"></h2>
+        <p class="tour__body" id="tour-popup-body"></p>
+        <div class="tour__actions">
+            <button type="button" class="tour__skip" id="tour-skip">Skip tutorial</button>
+            <div class="tour__nav">
+                <button type="button" class="btn btn-secondary btn-sm" id="tour-back">Back</button>
+                <button type="button" class="btn btn-primary btn-sm" id="tour-next">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <dialog class="tour-dialog" id="tour-welcome">
+        <h2>Welcome to Gabay Mata</h2>
+        <p>
+            You are about to set up an AI assistant your class can use — one that helps students
+            think instead of handing them answers. It takes about a minute to see how.
+        </p>
+        <p class="tour-dialog__hint">
+            We will walk you through creating your first workspace, sharing it with students, and
+            reading the dashboard. You can stop at any point.
+        </p>
+        <div class="tour-dialog__actions">
+            <button type="button" class="btn btn-secondary" id="tour-welcome-skip">Not now</button>
+            <button type="button" class="btn btn-primary" id="tour-welcome-start">Show me around</button>
+        </div>
+    </dialog>
+
+    <dialog class="tour-dialog" id="tour-finish">
+        <h2>That is the whole tour</h2>
+        <p>
+            You know how to create a workspace, pick the mode that decides what the AI will and
+            will not do, share the join code, and check the dashboard.
+        </p>
+        <p class="tour-dialog__hint">
+            You can replay this tutorial any time from <strong>Account settings</strong>.
+        </p>
+        <div class="tour-dialog__actions">
+            <button type="button" class="btn btn-primary" id="tour-finish-close">Done</button>
+        </div>
+    </dialog>
+
+    <dialog class="tour-dialog" id="tour-skip-confirm">
+        <h2>Skip the tutorial?</h2>
+        <p>You can restart it later from <strong>Account settings</strong> — nothing is lost.</p>
+        <div class="tour-dialog__actions">
+            <button type="button" class="btn btn-secondary" id="tour-skip-cancel">Keep going</button>
+            <button type="button" class="btn btn-primary" id="tour-skip-confirm-yes">Skip tutorial</button>
+        </div>
+    </dialog>
+</div>
+
+<script>
+    (function () {
+        var root = document.getElementById('onboarding-tour');
+        if (!root) return;
+
+        var stepsData = document.getElementById('onboarding-tour-steps');
+        var allSteps = stepsData ? JSON.parse(stepsData.textContent) : [];
+
+        // Drop any step whose anchor isn't actually on this page. A section
+        // can be conditionally rendered (or a template can change), and a
+        // coach mark pointing at nothing would trap the teacher — far better
+        // to quietly show one step fewer. See onboarding.py's module docstring.
+        var steps = allSteps.filter(function (step) {
+            return document.querySelector(step.anchor) !== null;
+        });
+        if (!steps.length) return;
+
+        var spotlight = document.getElementById('tour-spotlight');
+        var popup = document.getElementById('tour-popup');
+        var titleEl = document.getElementById('tour-popup-title');
+        var bodyEl = document.getElementById('tour-popup-body');
+        var progressEl = document.getElementById('tour-popup-progress');
+        var backButton = document.getElementById('tour-back');
+        var nextButton = document.getElementById('tour-next');
+        var skipButton = document.getElementById('tour-skip');
+
+        var welcomeDialog = document.getElementById('tour-welcome');
+        var finishDialog = document.getElementById('tour-finish');
+        var skipDialog = document.getElementById('tour-skip-confirm');
+
+        var page = root.dataset.page;
+        var isFinalPage = root.dataset.finalPage === '1';
+        var alreadySeen = root.dataset.seen === '1';
+        var csrfToken = root.querySelector('input[name=csrfmiddlewaretoken]').value;
+
+        var index = 0;
+        var currentAnchor = null;
+        var pageMarkedDone = false;
+        var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        // Fire-and-forget state ping. The UI never blocks on these — the
+        // client already knows what to render next, and a failed POST just
+        // means the teacher sees the page's coach marks once more later,
+        // which is a much gentler failure than a stuck tour.
+        function post(url, params) {
+            var body = new URLSearchParams(params || {});
+            return fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: body.toString(),
+                credentials: 'same-origin',
+            }).catch(function () { /* offline or blocked — see above */ });
+        }
+
+        // --- positioning -----------------------------------------------------
+        // The tour container is position: fixed, so viewport coordinates from
+        // getBoundingClientRect() can be used directly with no scroll maths.
+        function position() {
+            if (!currentAnchor) return;
+
+            var rect = currentAnchor.getBoundingClientRect();
+            var pad = 6;
+            var gap = 12;
+            var margin = 12;
+
+            spotlight.style.top = (rect.top - pad) + 'px';
+            spotlight.style.left = (rect.left - pad) + 'px';
+            spotlight.style.width = (rect.width + pad * 2) + 'px';
+            spotlight.style.height = (rect.height + pad * 2) + 'px';
+
+            var popupRect = popup.getBoundingClientRect();
+            var viewportHeight = window.innerHeight;
+            var viewportWidth = window.innerWidth;
+
+            // Prefer below the anchor; flip above when that would overflow;
+            // fall back to pinning within the viewport if neither side fits
+            // (a very tall anchor on a short screen).
+            var top = rect.bottom + gap;
+            if (top + popupRect.height > viewportHeight - margin) {
+                var above = rect.top - popupRect.height - gap;
+                top = above >= margin
+                    ? above
+                    : Math.max(margin, viewportHeight - popupRect.height - margin);
+            }
+
+            var left = Math.min(
+                Math.max(margin, rect.left),
+                Math.max(margin, viewportWidth - popupRect.width - margin)
+            );
+
+            popup.style.top = top + 'px';
+            popup.style.left = left + 'px';
+        }
+
+        // --- step rendering --------------------------------------------------
+        function render() {
+            var step = steps[index];
+            currentAnchor = document.querySelector(step.anchor);
+            if (!currentAnchor) { advance(); return; }
+
+            titleEl.textContent = step.title;
+            bodyEl.textContent = step.body;
+            progressEl.textContent = 'Step ' + (index + 1) + ' of ' + steps.length;
+
+            backButton.hidden = index === 0;
+            var isLastStep = index === steps.length - 1;
+            nextButton.textContent = isLastStep
+                ? (isFinalPage ? 'Finish' : 'Got it')
+                : 'Next';
+
+            // Record the page as soon as its final coach mark is *shown*,
+            // not when it's dismissed. Several pages end on a step that asks
+            // the teacher to click real UI ("+ New workspace", "View
+            // dashboard"), so they legitimately navigate away instead of
+            // pressing "Got it" — marking on dismissal only would leave
+            // those pages unseen forever and re-show their marks on every
+            // later visit. By this point every mark on the page has been
+            // displayed, which is what "seen" means.
+            if (isLastStep) markPageDone();
+
+            spotlight.hidden = false;
+            popup.hidden = false;
+
+            currentAnchor.scrollIntoView({
+                block: 'center',
+                behavior: reducedMotion ? 'auto' : 'smooth',
+            });
+            position();
+            popup.focus({ preventScroll: true });
+        }
+
+        function advance() {
+            if (index < steps.length - 1) {
+                index += 1;
+                render();
+            } else {
+                completePage();
+            }
+        }
+
+        function hide() {
+            spotlight.hidden = true;
+            popup.hidden = true;
+            currentAnchor = null;
+        }
+
+        // Idempotent on the client as well as the server — render() calls this
+        // every time the last step is (re)shown, including after a Back/Next.
+        function markPageDone() {
+            if (pageMarkedDone) return;
+            pageMarkedDone = true;
+            post(root.dataset.pageDoneUrl, { page: page });
+        }
+
+        function completePage() {
+            markPageDone();
+            hide();
+            if (isFinalPage) finishDialog.showModal();
+        }
+
+        function skip() {
+            hide();
+            post(root.dataset.skipUrl);
+        }
+
+        // --- wiring ----------------------------------------------------------
+        nextButton.addEventListener('click', advance);
+        backButton.addEventListener('click', function () {
+            if (index > 0) { index -= 1; render(); }
+        });
+
+        skipButton.addEventListener('click', function () { skipDialog.showModal(); });
+        document.getElementById('tour-skip-cancel').addEventListener('click', function () {
+            skipDialog.close();
+        });
+        document.getElementById('tour-skip-confirm-yes').addEventListener('click', function () {
+            skipDialog.close();
+            skip();
+        });
+
+        document.getElementById('tour-welcome-start').addEventListener('click', function () {
+            welcomeDialog.close();
+            post(root.dataset.startUrl);
+            render();
+        });
+        document.getElementById('tour-welcome-skip').addEventListener('click', function () {
+            welcomeDialog.close();
+            skip();
+        });
+        document.getElementById('tour-finish-close').addEventListener('click', function () {
+            finishDialog.close();
+        });
+
+        // Esc while a coach mark is showing asks to skip, rather than silently
+        // abandoning the tour — the native <dialog>s handle their own Esc.
+        document.addEventListener('keydown', function (event) {
+            if (event.key !== 'Escape' || popup.hidden) return;
+            skipDialog.showModal();
+        });
+
+        // Keep the spotlight and popup glued to the anchor while the page
+        // scrolls (including the smooth scrollIntoView above) or resizes.
+        window.addEventListener('scroll', position, { passive: true });
+        window.addEventListener('resize', position);
+
+        // --- entry point -----------------------------------------------------
+        if (alreadySeen) return;                       // this page's marks are done
+        if (root.dataset.status === 'pending') {
+            welcomeDialog.showModal();                 // first ever teacher page load
+        } else {
+            render();                                  // tour already underway
+        }
+    })();
+</script>

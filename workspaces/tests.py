@@ -9,7 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
-from . import ai_client, moderation, storage
+from . import ai_client, moderation, onboarding, storage
 from .forms import MaterialUploadForm
 from .models import Flag, Material, Message, Profile, Slide, StudentSession, Workspace
 from .utils import extract_pptx_text, rasterize_pdf, render_ai_content
@@ -1341,6 +1341,199 @@ class LiveStatusTests(TestCase):
         self._join_as_student()
         response = self.client.get(reverse('live_status'))
         self.assertContains(response, 'slide 3 of 4')
+
+
+class TeacherOnboardingTourTests(TestCase):
+    """The new-teacher guided tour — see workspaces/onboarding.py for how the
+    page-driven (rather than linear-cursor) design works, and
+    workspaces/context_processors.py for the gating."""
+
+    def setUp(self):
+        self.teacher = _create_teacher('teacher')
+        self.workspace = Workspace.objects.create(
+            teacher=self.teacher, name='Test Class', mode=Workspace.Mode.SOCRATIC, join_code='ABCDEF',
+        )
+        self.client.login(username='teacher', password='pw')
+
+    def _profile(self):
+        self.teacher.refresh_from_db()
+        return self.teacher.profile
+
+    # --- gating ---------------------------------------------------------
+
+    def test_new_teacher_signup_starts_tour_pending(self):
+        self.client.logout()
+        self.client.post(reverse('signup'), {
+            'username': 'brandnew', 'password1': 'Abcdef123', 'password2': 'Abcdef123',
+            'email': '', 'agree_to_terms': 'on',
+        })
+        profile = get_user_model().objects.get(username='brandnew').profile
+        self.assertEqual(profile.onboarding_status, Profile.OnboardingStatus.PENDING)
+        self.assertEqual(profile.onboarding_seen_pages, [])
+
+    def test_tour_renders_on_toured_page_while_pending(self):
+        response = self.client.get(reverse('workspace_list'))
+        self.assertContains(response, 'id="onboarding-tour"')
+        self.assertContains(response, 'Welcome to Gabay Mata')
+
+    def test_tour_absent_once_done(self):
+        profile = self.teacher.profile
+        profile.onboarding_status = Profile.OnboardingStatus.DONE
+        profile.save()
+        response = self.client.get(reverse('workspace_list'))
+        self.assertNotContains(response, 'id="onboarding-tour"')
+
+    def test_tour_absent_on_untoured_page(self):
+        # teacher_settings defines no steps, so the tour must not appear even
+        # though the teacher's own status is still pending.
+        response = self.client.get(reverse('teacher_settings'))
+        self.assertNotContains(response, 'id="onboarding-tour"')
+
+    def test_students_never_see_the_tour(self):
+        _create_student('student')
+        self.client.login(username='student', password='pw')
+        response = self.client.get(reverse('student_home'))
+        self.assertNotContains(response, 'id="onboarding-tour"')
+
+    def test_profile_less_user_does_not_break_page_render(self):
+        # The createsuperuser edge case (no Profile row) must not raise from
+        # the context processor — see decorators.py for the same case.
+        get_user_model().objects.create_user(username='noprofile', password='pw')
+        self.client.login(username='noprofile', password='pw')
+        response = self.client.get(reverse('home'), follow=True)
+        self.assertEqual(response.status_code, 200)
+
+    # --- anchors exist in the real templates ----------------------------
+
+    def test_every_step_anchor_is_present_on_its_page(self):
+        """Guards the tour's weakest link: a step's anchor selector and the
+        template's data-tour attribute are matched only by convention, so a
+        renamed attribute would silently drop a step at runtime."""
+        pages = {
+            'workspace_list': reverse('workspace_list'),
+            'workspace_create': reverse('workspace_create'),
+            'workspace_detail': reverse('workspace_detail', kwargs={'pk': self.workspace.pk}),
+            'workspace_dashboard': reverse('workspace_dashboard', kwargs={'pk': self.workspace.pk}),
+        }
+        self.assertEqual(set(pages), set(onboarding.TOUR_STEPS))
+
+        for page, url in pages.items():
+            html = self.client.get(url).content.decode()
+            for step in onboarding.TOUR_STEPS[page]:
+                # Steps use [data-tour="x"] selectors; stripping the brackets
+                # leaves exactly the attribute as templates write it.
+                attribute = step['anchor'].strip('[]')
+                self.assertIn(attribute, html, f'{page}: missing anchor for "{step["title"]}"')
+
+    # --- state transitions ----------------------------------------------
+
+    def test_start_marks_tour_active(self):
+        response = self.client.post(reverse('onboarding_start'))
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self._profile().onboarding_status, Profile.OnboardingStatus.ACTIVE)
+
+    def test_skip_marks_tour_done(self):
+        response = self.client.post(reverse('onboarding_skip'))
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self._profile().onboarding_status, Profile.OnboardingStatus.DONE)
+
+    def test_page_done_records_page_without_finishing_tour(self):
+        response = self.client.post(reverse('onboarding_page_done'), {'page': 'workspace_list'})
+        self.assertEqual(response.status_code, 204)
+        profile = self._profile()
+        self.assertEqual(profile.onboarding_seen_pages, ['workspace_list'])
+        self.assertEqual(profile.onboarding_status, Profile.OnboardingStatus.ACTIVE)
+
+    def test_page_done_is_idempotent(self):
+        for _ in range(3):
+            self.client.post(reverse('onboarding_page_done'), {'page': 'workspace_list'})
+        self.assertEqual(self._profile().onboarding_seen_pages, ['workspace_list'])
+
+    def test_seeing_every_page_completes_the_tour(self):
+        for page in onboarding.TOUR_PAGE_ORDER:
+            self.client.post(reverse('onboarding_page_done'), {'page': page})
+        profile = self._profile()
+        self.assertEqual(profile.onboarding_status, Profile.OnboardingStatus.DONE)
+        self.assertTrue(onboarding.is_complete(profile.onboarding_seen_pages))
+
+    def test_page_done_rejects_unknown_page(self):
+        response = self.client.post(reverse('onboarding_page_done'), {'page': 'not_a_real_page'})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self._profile().onboarding_seen_pages, [])
+
+    def test_seen_page_is_not_shown_again(self):
+        self.client.post(reverse('onboarding_page_done'), {'page': 'workspace_list'})
+        response = self.client.get(reverse('workspace_list'))
+        # The partial still renders (the tour isn't finished), but flags this
+        # page as already seen so its script returns without showing marks.
+        self.assertContains(response, 'data-seen="1"')
+
+    def test_final_page_flag_only_set_when_all_others_seen(self):
+        detail_url = reverse('workspace_detail', kwargs={'pk': self.workspace.pk})
+        self.assertContains(self.client.get(detail_url), 'data-final-page="0"')
+
+        for page in ['workspace_list', 'workspace_create', 'workspace_dashboard']:
+            self.client.post(reverse('onboarding_page_done'), {'page': page})
+        self.assertContains(self.client.get(detail_url), 'data-final-page="1"')
+
+    # --- restart --------------------------------------------------------
+
+    def test_restart_clears_status_and_seen_pages(self):
+        for page in onboarding.TOUR_PAGE_ORDER:
+            self.client.post(reverse('onboarding_page_done'), {'page': page})
+        self.assertEqual(self._profile().onboarding_status, Profile.OnboardingStatus.DONE)
+
+        response = self.client.post(reverse('onboarding_restart'))
+        self.assertRedirects(response, reverse('workspace_list'))
+        profile = self._profile()
+        self.assertEqual(profile.onboarding_status, Profile.OnboardingStatus.PENDING)
+        # Must clear seen_pages too — otherwise the "restarted" tour would
+        # instantly re-complete itself on the next page load.
+        self.assertEqual(profile.onboarding_seen_pages, [])
+
+    def test_settings_page_offers_replay(self):
+        response = self.client.get(reverse('teacher_settings'))
+        self.assertContains(response, reverse('onboarding_restart'))
+        self.assertContains(response, 'Replay tutorial')
+
+    # --- authorization ---------------------------------------------------
+
+    def test_onboarding_endpoints_reject_get(self):
+        for name in ['onboarding_start', 'onboarding_page_done', 'onboarding_skip', 'onboarding_restart']:
+            self.assertEqual(self.client.get(reverse(name)).status_code, 405, name)
+
+    def test_student_cannot_touch_onboarding_endpoints(self):
+        _create_student('student')
+        self.client.login(username='student', password='pw')
+        for name in ['onboarding_start', 'onboarding_skip', 'onboarding_restart']:
+            self.assertRedirects(self.client.post(reverse(name)), reverse('student_home'))
+
+
+class OnboardingStepDataTests(TestCase):
+    """The tour's copy is data in workspaces/onboarding.py, so it's worth a
+    couple of cheap structural assertions."""
+
+    def test_every_step_is_fully_populated(self):
+        for page, steps in onboarding.TOUR_STEPS.items():
+            self.assertTrue(steps, f'{page} has no steps')
+            for step in steps:
+                self.assertTrue(step['anchor'].startswith('[data-tour='), step)
+                self.assertTrue(step['title'])
+                self.assertTrue(step['body'])
+
+    def test_is_complete_requires_every_page(self):
+        self.assertFalse(onboarding.is_complete([]))
+        self.assertFalse(onboarding.is_complete(['workspace_list']))
+        self.assertTrue(onboarding.is_complete(onboarding.TOUR_PAGE_ORDER))
+
+    def test_is_complete_tolerates_unknown_entries(self):
+        # A page removed from a later release can linger in a stored profile;
+        # coverage of the current pages is what matters, not list length.
+        stale = list(onboarding.TOUR_PAGE_ORDER) + ['a_page_that_no_longer_exists']
+        self.assertTrue(onboarding.is_complete(stale))
+
+    def test_steps_for_unknown_page_is_empty(self):
+        self.assertEqual(onboarding.steps_for_page('teacher_settings'), [])
 
 
 class HomeViewTests(TestCase):

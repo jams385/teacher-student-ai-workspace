@@ -10,14 +10,14 @@
         <h1>{{ workspace.name }}</h1>
         <span class="badge badge--{{ workspace.mode }}">{{ workspace.get_mode_display }}</span>
     </div>
-    <p class="workspace-detail-header__meta">
+    <p class="workspace-detail-header__meta" data-tour="join-code">
         Join code: <code>{{ workspace.join_code }}</code>
         <button type="button" class="workspace-card__copy" data-copy-text="{{ workspace.join_code }}">Copy</button>
         <span class="workspace-detail-header__divider" aria-hidden="true">|</span>
         Created {{ workspace.created_at|date:"M j, Y" }}
     </p>
     <div class="workspace-detail-header__actions">
-        <a href="{% url 'workspace_dashboard' pk=workspace.pk %}" class="btn btn-secondary">View dashboard &rarr;</a>
+        <a href="{% url 'workspace_dashboard' pk=workspace.pk %}" class="btn btn-secondary" data-tour="dashboard-link">View dashboard &rarr;</a>
     </div>
 </div>
 
@@ -74,7 +74,7 @@
     {% endif %}
 </div>
 
-<div class="workspace-detail-section">
+<div class="workspace-detail-section" data-tour="upload">
     <h2>Upload a new file</h2>
     <p class="workspace-detail-section__subtext">Select and upload the files of your choice.</p>
 

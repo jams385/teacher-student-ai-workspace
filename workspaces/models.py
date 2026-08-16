@@ -14,12 +14,36 @@ class Profile(models.Model):
         TEACHER = 'teacher', 'Teacher'
         STUDENT = 'student', 'Student'
 
+    class OnboardingStatus(models.TextChoices):
+        PENDING = 'pending', 'Not started'
+        ACTIVE = 'active', 'In progress'
+        DONE = 'done', 'Finished or skipped'
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='profile',
     )
     role = models.CharField(max_length=10, choices=Role.choices)
+
+    # Teacher-only guided tour (workspaces/onboarding.py). PENDING shows the
+    # welcome dialog, ACTIVE shows each page's coach marks as the teacher
+    # reaches it, DONE shows nothing. Students carry these fields too (one
+    # shared Profile table) but no student page defines tour steps, so they
+    # never surface — see context_processors.onboarding_tour, which gates on
+    # role before doing any of this work.
+    onboarding_status = models.CharField(
+        max_length=10,
+        choices=OnboardingStatus.choices,
+        default=OnboardingStatus.PENDING,
+    )
+    # Which pages' coach marks the teacher has already worked through, as a
+    # list of url_names (the same keys onboarding.TOUR_STEPS uses). Kept
+    # per-page rather than as a single "current step index" so the tour is
+    # page-driven: it follows the teacher to whichever page they actually
+    # open, shows that page's steps once, and never repeats them — instead of
+    # a strict linear cursor that a back button or a typed URL could desync.
+    onboarding_seen_pages = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return f'{self.user.username} ({self.get_role_display()})'

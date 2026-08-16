@@ -20,7 +20,7 @@
             <p class="form-error">{{ error }}</p>
         {% endfor %}
 
-        <div class="form-field">
+        <div class="form-field" data-tour="workspace-name">
             <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}</label>
             {{ form.name }}
             <p class="form-help">A join code will be generated automatically once you continue.</p>
@@ -32,7 +32,7 @@
             <p class="form-help">You can change this anytime from workspace settings.</p>
             {% for error in form.mode.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
 
-            <div class="mode-select">
+            <div class="mode-select" data-tour="mode-select">
                 {% for radio in form.mode %}
                 <label class="mode-card mode-card--{{ radio.data.value }}" for="{{ radio.id_for_label }}">
                     {{ radio.tag }}
